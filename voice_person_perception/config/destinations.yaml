@@ -1,0 +1,19 @@
+# Danh sách điểm đến dùng chung với bên thực thi.
+# `id` phải trùng với tên waypoint trên bản đồ của bên thực thi.
+# `aliases` là các cách nói khác; thêm điểm mới không cần sửa code.
+destinations:
+  - id: bep
+    name: bếp
+    aliases: [nhà bếp, chỗ nấu ăn, khu bếp]
+  - id: phong_khach
+    name: phòng khách
+    aliases: [phòng sinh hoạt, chỗ tiếp khách]
+  - id: phong_101
+    name: phòng 101
+    aliases: [phòng một không một, phòng một trăm linh một]
+  - id: phong_102
+    name: phòng 102
+    aliases: [phòng một không hai, phòng một trăm linh hai]
+  - id: tram_sac
+    name: trạm sạc
+    aliases: [chỗ sạc, về trạm, về chỗ sạc]

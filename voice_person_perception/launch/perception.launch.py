@@ -1,0 +1,29 @@
+"""Real pipeline: microphone + speech recognition + intent + person detection."""
+
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+
+def generate_launch_description():
+    args = [
+        DeclareLaunchArgument('backend', default_value='vosk',
+                              description='vosk | whisper'),
+        DeclareLaunchArgument('model_path', default_value='',
+                              description='Thư mục model Vosk (bắt buộc khi backend=vosk)'),
+        DeclareLaunchArgument('device_index', default_value='-1',
+                              description='Chỉ số micro (sounddevice); -1 = mặc định'),
+    ]
+    return LaunchDescription(args + [
+        Node(package='voice_person_perception', executable='asr_node', name='asr_node',
+             output='screen', parameters=[{
+                 'backend': LaunchConfiguration('backend'),
+                 'model_path': LaunchConfiguration('model_path'),
+                 'device_index': LaunchConfiguration('device_index'),
+             }]),
+        Node(package='voice_person_perception', executable='intent_resolver_node',
+             name='intent_resolver_node', output='screen'),
+        Node(package='voice_person_perception', executable='person_detector_node',
+             name='person_detector_node', output='screen'),
+    ])

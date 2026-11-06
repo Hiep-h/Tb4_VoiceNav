@@ -1,0 +1,9 @@
+numpy
+pyyaml
+rapidfuzz>=3.0
+sounddevice
+vosk
+ultralytics
+# Tùy chọn:
+# faster-whisper   # backend:=whisper
+# scipy            # resample chất lượng cao khi micro không hỗ trợ 16 kHz
