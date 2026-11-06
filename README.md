@@ -17,6 +17,7 @@ voice_person_perception/            package ROS 2 (ament_python)
 ├── config/destinations.yaml        điểm đến và cách nói khác (thêm điểm không cần sửa code)
 ├── launch/perception.launch.py     chạy thật: micro + camera
 ├── launch/fake.launch.py           giả lập cho bên thực thi test khi chưa có robot
+├── launch/record_bag.launch.py     thu đầu ra thành rosbag để gửi người khác
 ├── voice_person_perception/
 │   ├── intent.py, vad.py, person_math.py, asr_backends.py   logic thuần, có test
 │   ├── asr_node.py, intent_resolver_node.py, person_detector_node.py
@@ -68,6 +69,36 @@ Tham số hay chỉnh (`--ros-args -p tên:=giá trị`):
 | `person_detector_node` | `image_topic`, `depth_topic`, `camera_info_topic` | `/oakd/rgb/preview/...` | Topic camera; **xác nhận bằng `ros2 topic list` trên robot** |
 | | `hfov_deg` | `69` | Góc nhìn ngang dùng khi không có `camera_info` |
 | | `infer_rate_hz`, `imgsz` | `5`, `320` | Giảm nếu CPU yếu |
+
+## Thu dữ liệu bằng ros2 bag
+
+Thu đầu ra của phần cảm nhận (đang chạy `perception.launch.py` ở terminal khác) để gửi cho
+người làm thực thi test khi họ không có robot:
+
+```bash
+ros2 launch voice_person_perception record_bag.launch.py           # tên theo ngày giờ, nén zstd
+ros2 launch voice_person_perception record_bag.launch.py name:=nguoi_chan_duong
+```
+
+Mặc định thu 3 topic nhỏ: `/speech_text`, `/voice_command`, `/person_detections`. Nhấn `Ctrl+C`
+để dừng, bag nằm trong `bags/<tên>/`. Kiểm tra bằng `ros2 bag info bags/<tên>`.
+
+Thu thêm ảnh RGB/depth để test lại bộ nhận diện người offline (rất nặng, vài MB mỗi giây,
+chỉ thu đoạn ngắn): thêm `raw:=true`.
+
+**Gửi cho người kia:** nén cả thư mục (`zip -r nguoi_chan_duong.zip bags/nguoi_chan_duong`) rồi
+gửi qua Google Drive. Không commit bag lên GitHub.
+
+**Người nhận phát lại:**
+
+```bash
+ros2 bag play bags/nguoi_chan_duong            # thêm --loop để lặp
+```
+
+Khi phát lại phải **tắt node thật** (`asr_node`, `person_detector_node`, `fake.launch.py`),
+nếu không hai nguồn cùng publish một topic. Thu một bag cho từng tình huống cần test
+(đi bình thường, người chắn đường, nói sai/không hiểu, mất camera) để người kia kiểm tra
+từng trường hợp.
 
 ## Kiểm thử
 

@@ -10,3 +10,6 @@ log/
 models/
 *.pt
 *.zip
+
+# rosbag thu được
+bags/

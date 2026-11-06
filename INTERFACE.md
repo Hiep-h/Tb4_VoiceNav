@@ -66,6 +66,13 @@ Quy ước:
 Bên thực thi gửi `true` trong lúc robot phát tiếng bíp hoặc nói, `false` sau đó, để micro
 không nghe lại chính robot.
 
+## Phát lại từ rosbag
+
+Bên thực thi có thể test bằng bag do bên cảm nhận gửi (`ros2 bag play <bag>`). Khi đó
+`stamp` là **thời điểm lúc thu**, không phải giờ hiện tại, nên bên thực thi:
+- tính watchdog theo **thời điểm nhận tin** (giờ máy của mình), không so `stamp` với đồng hồ;
+- dùng `seq` để nhận biết lệnh mới; bag phát lặp (`--loop`) sẽ có `seq` lặp lại.
+
 ## Test khi chưa có robot
 
 ```bash
