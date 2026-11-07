@@ -11,7 +11,7 @@ from std_msgs.msg import Bool, String
 
 from voice_person_perception import contract
 from voice_person_perception import vocab
-from voice_person_perception.asr_backends import make_backend
+from voice_person_perception.asr_backends import FallbackBackend, make_backend
 from voice_person_perception.intent_resolver_node import _default_destinations_file
 from voice_person_perception.vad import EnergyVad, resample_to
 
@@ -22,7 +22,10 @@ class AsrNode(Node):
 
     def __init__(self):
         super().__init__('asr_node')
-        self.declare_parameter('backend', 'vosk')
+        # backend: google | whisper | vosk. fallback: used only when backend fails
+        # (Google without network or quota); '' = no fallback.
+        self.declare_parameter('backend', 'google')
+        self.declare_parameter('fallback', 'whisper')
         self.declare_parameter('model_path', '')
         self.declare_parameter('whisper_model', 'small')
         self.declare_parameter('language', 'vi')
@@ -35,20 +38,23 @@ class AsrNode(Node):
         self.declare_parameter('whisper_prompt', False)
 
         get = lambda name: self.get_parameter(name).value  # noqa: E731
+        path = get('destinations_file') or _default_destinations_file()
+        with open(path, encoding='utf-8') as f:
+            data = yaml.safe_load(f)
         grammar = prompt = None
-        if get('vosk_grammar') or get('whisper_prompt'):
-            path = get('destinations_file') or _default_destinations_file()
-            with open(path, encoding='utf-8') as f:
-                data = yaml.safe_load(f)
-            if get('vosk_grammar'):
-                grammar = vocab.vosk_grammar(data)
-                self.get_logger().info(f'Vosk grammar: {len(grammar)} câu mẫu từ {path}')
-            if get('whisper_prompt'):
-                prompt = vocab.whisper_prompt(data)
-                self.get_logger().info(f'Whisper prompt: "{prompt}"')
+        if get('vosk_grammar'):
+            grammar = vocab.vosk_grammar(data)
+            self.get_logger().info(f'Vosk grammar: {len(grammar)} câu mẫu từ {path}')
+        if get('whisper_prompt'):
+            prompt = vocab.whisper_prompt(data)
+            self.get_logger().info(f'Whisper prompt: "{prompt}"')
         self._backend = make_backend(
             get('backend'), get('model_path'), get('whisper_model'),
-            get('language'), TARGET_RATE, grammar=grammar, prompt=prompt)
+            get('language'), TARGET_RATE, grammar=grammar, prompt=prompt,
+            hints=vocab.destination_phrases(data), fallback=get('fallback'))
+        if isinstance(self._backend, FallbackBackend):
+            self._backend._on_fallback = lambda exc: self.get_logger().warn(
+                f"{get('backend')} lỗi ({exc}), dùng {get('fallback')} cho câu này")
         self._vad = EnergyVad(TARGET_RATE, min_rms=float(get('min_rms')),
                               end_silence_ms=int(get('end_silence_ms')))
 
@@ -68,6 +74,7 @@ class AsrNode(Node):
         self._worker.start()
         self.get_logger().info(
             f"asr_node sẵn sàng: backend={get('backend')}, "
+            f"dự phòng={get('fallback') or 'không'}, "
             f'mic {self._capture_rate} Hz. Đang nghe...')
 
     def _open_stream(self, device_index):
@@ -119,16 +126,19 @@ class AsrNode(Node):
                     continue
                 if result:
                     text, conf = result
-                    self._out_q.put((text, conf, time.monotonic() - started))
+                    engine = getattr(self._backend, 'last_engine', None)
+                    self._out_q.put((text, conf, time.monotonic() - started, engine))
 
     def _flush(self):
         while True:
             try:
-                text, conf, latency = self._out_q.get_nowait()
+                text, conf, latency, engine = self._out_q.get_nowait()
             except queue.Empty:
                 return
             stamp = self.get_clock().now().nanoseconds * 1e-9
-            self.get_logger().info(f'Nghe được: "{text}" (conf {conf:.2f}, {latency:.2f}s)')
+            via = f', {engine}' if engine else ''
+            self.get_logger().info(
+                f'Nghe được: "{text}" (conf {conf:.2f}, {latency:.2f}s{via})')
             msg = String()
             msg.data = contract.dumps(contract.make_speech_text(stamp, text, conf, latency))
             self._pub.publish(msg)

@@ -8,8 +8,13 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     args = [
-        DeclareLaunchArgument('backend', default_value='vosk',
-                              description='vosk | whisper'),
+        DeclareLaunchArgument('backend', default_value='google',
+                              description='google | whisper | vosk'),
+        DeclareLaunchArgument('fallback', default_value='whisper',
+                              description='Dùng khi backend lỗi (Google mất mạng); none = không'),
+        DeclareLaunchArgument('whisper_model', default_value='small',
+                              description='Cỡ model (small, medium) hoặc thư mục model '
+                                          'CTranslate2 (vd. PhoWhisper)'),
         DeclareLaunchArgument('model_path', default_value='',
                               description='Thư mục model Vosk (bắt buộc khi backend=vosk)'),
         DeclareLaunchArgument('vosk_grammar', default_value='false',
@@ -23,6 +28,8 @@ def generate_launch_description():
         Node(package='voice_person_perception', executable='asr_node', name='asr_node',
              output='screen', parameters=[{
                  'backend': LaunchConfiguration('backend'),
+                 'fallback': LaunchConfiguration('fallback'),
+                 'whisper_model': LaunchConfiguration('whisper_model'),
                  'model_path': LaunchConfiguration('model_path'),
                  'device_index': LaunchConfiguration('device_index'),
                  'vosk_grammar': LaunchConfiguration('vosk_grammar'),

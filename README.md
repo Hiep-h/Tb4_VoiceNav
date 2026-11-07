@@ -37,22 +37,28 @@ colcon build --packages-select voice_person_perception
 source install/setup.bash
 ```
 
-Model nhận dạng giọng nói (chọn một):
+Nhận dạng giọng nói: mặc định **Google** (cần Internet), **Whisper** dự phòng.
 
-- **Vosk (nhẹ, nhanh, hợp Raspberry Pi):** `bash scripts/download_vosk_model.sh` tải model tiếng
-  Việt nhỏ `vosk-model-small-vn-0.4` về `models/` (đã chạy được offline trong bài trước: nạp 0,11 s,
-  nhận dạng clip 2 s mất 1,39 s trên laptop).
-- **Whisper (chính xác hơn với câu tự do, chậm hơn):** `faster-whisper` tự tải model lần đầu
-  chạy; dùng `backend:=whisper`.
+- **Google** (`backend:=google`): dùng gói `SpeechRecognition`, gửi từng câu lên Google, tiếng Việt
+  tốt nhất trong ba bộ. Google trả vài phương án; node chọn phương án đầu tiên có tên một điểm đến
+  trong `destinations.yaml`, không có thì lấy phương án đầu.
+- **Whisper dự phòng** (`fallback:=whisper`): chỉ chạy khi Google báo lỗi (mất mạng, hết hạn mức,
+  quá 5 s), và chỉ cho câu đó. Google nghe không ra chữ thì KHÔNG chuyển, để tránh tốn thời gian.
+  Model Whisper nạp sẵn lúc khởi động (`faster-whisper` tự tải lần đầu), nên chạy trên laptop.
+  Có thể trỏ `whisper_model:=` tới một thư mục model CTranslate2, ví dụ PhoWhisper (Whisper huấn
+  luyện thêm cho tiếng Việt).
+- **Vosk** (`backend:=vosk`, offline, hợp Raspberry Pi): `bash scripts/download_vosk_model.sh` tải
+  `vosk-model-small-vn-0.4` về `models/`. Nhận tiếng Việt kém hơn hai bộ trên.
 
 YOLOv8n (`yolov8n.pt`) được `ultralytics` tự tải lần đầu chạy.
 
 ## Chạy
 
 ```bash
-# Chạy thật (cần micro, và camera OAK-D đang phát topic):
-ros2 launch voice_person_perception perception.launch.py \
-    backend:=vosk model_path:=$PWD/models/vosk-model-small-vn-0.4
+# Chạy thật (cần micro, Internet, và camera OAK-D đang phát topic):
+ros2 launch voice_person_perception perception.launch.py           # Google, Whisper dự phòng
+ros2 launch voice_person_perception perception.launch.py whisper_model:=medium
+ros2 launch voice_person_perception perception.launch.py fallback:=none   # chỉ Google
 
 # Giả lập (không cần micro/camera):
 ros2 launch voice_person_perception fake.launch.py
@@ -62,7 +68,10 @@ Tham số hay chỉnh (`--ros-args -p tên:=giá trị`):
 
 | Node | Tham số | Mặc định | Ý nghĩa |
 |---|---|---|---|
-| `asr_node` | `backend`, `model_path` | `vosk`, rỗng | Bộ nhận dạng và model |
+| `asr_node` | `backend` | `google` | `google`, `whisper` hoặc `vosk` |
+| | `fallback` | `whisper` | Bộ dự phòng khi `backend` lỗi; `none` = không dùng |
+| | `whisper_model` | `small` | Cỡ model hoặc thư mục model CTranslate2 (PhoWhisper) |
+| | `model_path` | rỗng | Thư mục model Vosk (khi dùng Vosk) |
 | | `device_index` | `-1` | Chỉ số micro; xem `python3 -m sounddevice` |
 | | `min_rms` | `250` | Ngưỡng tiếng tối thiểu; ngưỡng thật tự theo tiếng ồn nền |
 | | `vosk_grammar` | `false` | Vosk chỉ nhận câu mẫu sinh từ `destinations.yaml` (xem dưới) |
@@ -95,10 +104,12 @@ Chạy cùng khâu cắt câu, nhận dạng và hiểu lệnh như trên robot,
 `config/eval_phrases.yaml` (có câu dừng, hủy và điểm đến không tồn tại).
 
 ```bash
-# 1) Ghi âm: mỗi câu nói 3 lần, lưu WAV để so sánh lại
-ros2 run voice_person_perception eval_voice --backend vosk \
-    --model-path models/vosk-model-small-vn-0.4 --reps 3 --record-dir eval_audio/hiep
+# 1) Ghi âm (đánh giá luôn bằng Google): mỗi câu nói 3 lần, lưu WAV để so sánh lại
+ros2 run voice_person_perception eval_voice --backend google --reps 3 --record-dir eval_audio/hiep
 # 2) Chạy lại CÙNG bản ghi với cấu hình khác
+ros2 run voice_person_perception eval_voice --backend whisper --from-dir eval_audio/hiep
+ros2 run voice_person_perception eval_voice --backend whisper --whisper-model medium \
+    --from-dir eval_audio/hiep
 ros2 run voice_person_perception eval_voice --backend vosk \
     --model-path models/vosk-model-small-vn-0.4 --vosk-grammar --from-dir eval_audio/hiep
 ros2 run voice_person_perception eval_voice --backend whisper --whisper-prompt --from-dir eval_audio/hiep

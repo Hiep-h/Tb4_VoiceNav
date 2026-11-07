@@ -2,8 +2,9 @@ numpy
 pyyaml
 rapidfuzz>=3.0
 sounddevice
+SpeechRecognition   # backend:=google (mặc định)
+faster-whisper      # backend dự phòng khi Google lỗi
 vosk
 ultralytics
 # Tùy chọn:
-# faster-whisper   # backend:=whisper
 # scipy            # resample chất lượng cao khi micro không hỗ trợ 16 kHz

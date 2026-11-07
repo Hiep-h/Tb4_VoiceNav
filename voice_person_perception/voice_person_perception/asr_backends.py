@@ -1,4 +1,9 @@
-"""Speech-to-text backends. Both take one finished utterance (int16, 16 kHz)."""
+"""Speech-to-text backends. All take one finished utterance (int16, 16 kHz).
+
+transcribe() returns (text, confidence), or None when nothing was understood,
+and raises when the engine itself fails (network, model), so FallbackBackend
+can switch to the backup engine.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +13,7 @@ import re
 
 import numpy as np
 
+from voice_person_perception.intent import normalize
 from voice_person_perception.vocab import UNK
 
 # Whisper tends to invent these on silence or noise.
@@ -86,12 +92,100 @@ class WhisperBackend:
         return text, sum(confs) / len(confs)
 
 
+GOOGLE_LANG = {'vi': 'vi-VN', 'en': 'en-US'}
+GOOGLE_DEFAULT_CONF = 0.8  # Google gives a confidence only for its top guess
+
+
+def pick_alternative(alternatives, hints=()):
+    """Choose among Google's guesses: the first one that names a known
+    destination (hints, e.g. names and aliases), else Google's top guess.
+
+    Returns (text, confidence) or None.
+    """
+    texts = [(a.get('transcript', '').strip(), a.get('confidence')) for a in alternatives]
+    texts = [(t, c) for t, c in texts if t]
+    if not texts:
+        return None
+    top_conf = texts[0][1] if texts[0][1] is not None else GOOGLE_DEFAULT_CONF
+    norm_hints = [h for h in (normalize(x) for x in hints) if h]
+    for i, (text, conf) in enumerate(texts):
+        padded = f' {normalize(text)} '
+        if any(f' {h} ' in padded for h in norm_hints):
+            if conf is None:
+                conf = min(top_conf, GOOGLE_DEFAULT_CONF) if i else top_conf
+            return text, float(conf)
+    return texts[0][0], float(top_conf)
+
+
+class GoogleBackend:
+    """Google Web Speech API via the SpeechRecognition package (needs Internet)."""
+
+    def __init__(self, language='vi', sample_rate=16000, hints=(), timeout_s=5.0,
+                 recognize=None):
+        self._rate = sample_rate
+        self._language = GOOGLE_LANG.get(language, language)
+        self._hints = tuple(hints)
+        if recognize is None:
+            try:
+                import speech_recognition as sr
+            except ImportError as exc:
+                raise RuntimeError('Cài SpeechRecognition: pip install SpeechRecognition') from exc
+            recognizer = sr.Recognizer()
+            recognizer.operation_timeout = timeout_s  # fail fast so the backup takes over
+
+            def recognize(raw, rate, lang):
+                audio = sr.AudioData(raw, rate, 2)
+                return recognizer.recognize_google(audio, language=lang, show_all=True)
+        self._recognize = recognize
+
+    def transcribe(self, audio):
+        result = self._recognize(audio.astype(np.int16).tobytes(), self._rate, self._language)
+        alternatives = result.get('alternative', []) if isinstance(result, dict) else []
+        return pick_alternative(alternatives, self._hints)
+
+
+class FallbackBackend:
+    """Use the primary engine; if it raises, transcribe with the backup instead.
+
+    `last_engine` tells which one produced the last result.
+    """
+
+    def __init__(self, primary, backup, primary_name='primary', backup_name='backup',
+                 on_fallback=None):
+        self._primary, self._backup = primary, backup
+        self._names = (primary_name, backup_name)
+        self._on_fallback = on_fallback
+        self.last_engine = primary_name
+
+    def transcribe(self, audio):
+        try:
+            result = self._primary.transcribe(audio)
+            self.last_engine = self._names[0]
+            return result
+        except Exception as exc:
+            if self._on_fallback:
+                self._on_fallback(exc)
+            self.last_engine = self._names[1]
+            return self._backup.transcribe(audio)
+
+
 def make_backend(name, model_path='', whisper_model='small', language='vi',
-                 sample_rate=16000, grammar=None, prompt=None):
+                 sample_rate=16000, grammar=None, prompt=None, hints=(),
+                 fallback=''):
+    """name: vosk | whisper | google. fallback: '' / 'none' or another backend name,
+    used only when `name` raises (for example Google without network)."""
     if name == 'vosk':
         if not model_path:
             raise RuntimeError('Backend vosk cần tham số model_path')
-        return VoskBackend(model_path, sample_rate, grammar)
-    if name == 'whisper':
-        return WhisperBackend(whisper_model, language, prompt=prompt)
-    raise RuntimeError(f'Backend không hợp lệ: {name}')
+        backend = VoskBackend(model_path, sample_rate, grammar)
+    elif name == 'whisper':
+        backend = WhisperBackend(whisper_model, language, prompt=prompt)
+    elif name == 'google':
+        backend = GoogleBackend(language, sample_rate, hints)
+    else:
+        raise RuntimeError(f'Backend không hợp lệ: {name}')
+    if not fallback or fallback in ('none', name):
+        return backend
+    backup = make_backend(fallback, model_path, whisper_model, language, sample_rate,
+                          grammar, prompt, hints)
+    return FallbackBackend(backend, backup, name, fallback)

@@ -8,7 +8,8 @@ Record once, then compare backends on the SAME audio:
     # 1) record (and evaluate with Vosk)
     ros2 run voice_person_perception eval_voice --backend vosk \\
         --model-path models/vosk-model-small-vn-0.4 --reps 3 --record-dir eval_audio/hiep
-    # 2) replay the saved audio with other settings
+    # 2) replay the saved audio with other settings (Google, Whisper/PhoWhisper, Vosk)
+    ros2 run voice_person_perception eval_voice --backend google --from-dir eval_audio/hiep
     ros2 run voice_person_perception eval_voice --backend vosk \\
         --model-path models/vosk-model-small-vn-0.4 --vosk-grammar --from-dir eval_audio/hiep
     ros2 run voice_person_perception eval_voice --backend whisper --from-dir eval_audio/hiep
@@ -194,7 +195,9 @@ def _attempts(args, cases):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    ap.add_argument('--backend', choices=['vosk', 'whisper'], default='vosk')
+    ap.add_argument('--backend', choices=['google', 'whisper', 'vosk'], default='google')
+    ap.add_argument('--fallback', default='none',
+                    help='backend dự phòng khi backend chính lỗi (whisper, vosk, none)')
     ap.add_argument('--model-path', default='', help='thư mục model Vosk')
     ap.add_argument('--whisper-model', default='small')
     ap.add_argument('--vosk-grammar', action='store_true',
@@ -220,20 +223,31 @@ def main(argv=None):
     grammar = vocab.vosk_grammar(dest_data) if args.vosk_grammar else None
     prompt = vocab.whisper_prompt(dest_data) if args.whisper_prompt else None
     backend = make_backend(args.backend, args.model_path, args.whisper_model, 'vi',
-                           RATE, grammar=grammar, prompt=prompt)
+                           RATE, grammar=grammar, prompt=prompt,
+                           hints=vocab.destination_phrases(dest_data),
+                           fallback=args.fallback)
     label = args.backend + ('+grammar' if grammar else '') + ('+prompt' if prompt else '')
+    if args.fallback not in ('', 'none', args.backend):
+        label += f'+fb_{args.fallback}'
+    if args.backend == 'whisper' or args.fallback == 'whisper':
+        label += '_' + os.path.basename(os.path.normpath(args.whisper_model))
 
     rows = []
     for case, rep, path, audio in _attempts(args, cases):
         utt = cut_utterance(audio)
         t0 = time.monotonic()
-        out = backend.transcribe(utt)
+        try:
+            out = backend.transcribe(utt)
+        except Exception as exc:  # e.g. Google offline with no fallback
+            print(f'   Lỗi nhận dạng: {exc}')
+            out = None
         asr_s = time.monotonic() - t0
         text, conf = out if out else ('', 0.0)
         result = parse_utterance(text, destinations, asr_conf=conf) if text else None
         outcome = classify(case, text, result)
         rows.append({
-            'config': label, 'case': case.id, 'rep': rep, 'say': case.say,
+            'config': label, 'engine': getattr(backend, 'last_engine', args.backend),
+            'case': case.id, 'rep': rep, 'say': case.say,
             'heard': text, 'asr_conf': round(conf, 2), 'asr_s': round(asr_s, 3),
             'intent': result.intent if result else '',
             'destination': (result.destination or '') if result else '',
