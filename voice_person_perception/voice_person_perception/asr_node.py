@@ -38,7 +38,8 @@ class AsrNode(Node):
         self.declare_parameter('whisper_prompt', False)
 
         get = lambda name: self.get_parameter(name).value  # noqa: E731
-        path = get('destinations_file') or _default_destinations_file()
+        path = (get('destinations_file') if get('destinations_file') not in ('', 'auto')
+                else _default_destinations_file())
         with open(path, encoding='utf-8') as f:
             data = yaml.safe_load(f)
         grammar = prompt = None

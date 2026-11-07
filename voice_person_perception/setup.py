@@ -31,6 +31,8 @@ setup(
             'fake_person_node = voice_person_perception.fake_person_node:main',
             'eval_voice = voice_person_perception.eval_voice:main',
             'waypoint_marker = voice_person_perception.waypoint_marker:main',
+            'destination_markers = voice_person_perception.destination_markers:main',
+            'nav_goal_cmd = voice_person_perception.waypoints:goal_main',
         ],
     },
 )

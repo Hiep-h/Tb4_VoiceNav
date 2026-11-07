@@ -86,3 +86,21 @@ def test_file_with_poses_still_works_for_voice(tmp_path):
     dests = load_destinations(loaded)
     assert parse_utterance('mang đồ ra chỗ tủ lạnh', dests).destination == 'tu_lanh'
     assert 'đi đến tủ lạnh' in vocab.vosk_grammar(loaded)
+
+
+def test_nav_goal_command(tmp_path, capsys):
+    item = {'id': 'bep', 'pose': {'x': 1.5, 'y': -0.25, 'yaw': math.pi / 2}}
+    cmd = wp.nav_goal_command(item)
+    assert cmd.startswith('ros2 action send_goal /navigate_to_pose ')
+    goal = yaml.safe_load(cmd.split('"')[1])  # the goal is valid YAML for ros2 cli
+    assert goal['pose']['header']['frame_id'] == 'map'
+    assert goal['pose']['pose']['position'] == {'x': 1.5, 'y': -0.25, 'z': 0.0}
+    assert goal['pose']['pose']['orientation']['z'] == pytest.approx(0.7071, abs=1e-4)
+
+    path = tmp_path / 'd.yaml'
+    data = {'destinations': [dict(item, name='bếp'), {'id': 'kho', 'name': 'kho'}]}
+    wp.save(str(path), data)
+    assert wp.goal_main(['--file', str(path)]) == 0
+    out = capsys.readouterr().out
+    assert 'send_goal' in out and 'kho: chưa có vị trí' in out
+    assert wp.goal_main(['khong_co', '--file', str(path)]) == 1

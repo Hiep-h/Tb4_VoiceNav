@@ -5,6 +5,9 @@ và **nhận diện người bằng camera OAK-D**. Package chỉ phát kết qu
 điều hướng, dừng và cảnh báo do người làm thực thi đảm nhiệm. Định dạng message nằm trong
 [INTERFACE.md](INTERFACE.md).
 
+Muốn chạy từ đầu (vẽ map, đánh dấu điểm đến, cho robot đi): xem
+[Từ vẽ map đến lúc robot đi](#từ-vẽ-map-đến-lúc-robot-đi-làm-theo-thứ-tự).
+
 ```
 Micro → VAD → nhận dạng (Google, Whisper dự phòng | Vosk) → /speech_text → bộ hiểu lệnh → /voice_command
 OAK-D RGB + depth → YOLOv8n (người) + khoảng cách + góc ──────────────────→ /person_detections
@@ -21,9 +24,10 @@ voice_person_perception/            package ROS 2 (ament_python)
 ├── launch/record_bag.launch.py     thu đầu ra thành rosbag để gửi người khác
 ├── voice_person_perception/
 │   ├── intent.py, vad.py, person_math.py, asr_backends.py   logic thuần, có test
-│   ├── vocab.py, waypoints.py                               logic thuần, có test
+│   ├── vocab.py, waypoints.py, marker_specs.py              logic thuần, có test
 │   ├── asr_node.py, intent_resolver_node.py, person_detector_node.py
 │   ├── waypoint_marker.py          đánh dấu điểm đến trên map, ghi vào destinations.yaml
+│   ├── destination_markers.py      vẽ các điểm đến lên RViz, tự cập nhật khi file đổi
 │   ├── eval_voice.py               đo độ chính xác + độ trễ giọng nói
 │   └── fake_voice_node.py, fake_person_node.py
 └── test/                           pytest, không cần ROS
@@ -102,34 +106,103 @@ Mặc định tắt cả hai, bật sau khi `eval_voice` cho thấy có lợi tr
 **Thêm bí danh theo lỗi nhận dạng:** sau khi đo, xem cột `heard` trong file kết quả. Từ nào ASR hay
 nghe nhầm cho một điểm đến (ví dụ "phòng khác" thay vì "phòng khách") thì thêm vào `aliases`.
 
-## Đánh dấu điểm đến trên map (`waypoint_marker`)
+## Từ vẽ map đến lúc robot đi (làm theo thứ tự)
 
-Làm sau khi đã có map. Bật định vị trên map đó (vd. `ros2 launch turtlebot4_navigation
-localization.launch.py map:=lab.yaml`, đặt initial pose trong RViz), rồi ở terminal khác:
+Laptop và robot cùng mạng, cùng `ROS_DOMAIN_ID`; mọi lệnh chạy trên laptop, mỗi lệnh một
+terminal đã `source install/setup.bash`. Để gõ ngắn, đặt biến trỏ tới file điểm đến **trong
+thư mục `src`** (công cụ ghi vào đây, không phải `install`):
 
 ```bash
-ros2 run voice_person_perception waypoint_marker --ros-args \
-    -p file:=$PWD/src/<repo>/voice_person_perception/config/destinations.yaml -p map_name:=lab
+export DEST=~/ros2_ws/src/tb4_voicenav/voice_person_perception/config/destinations.yaml
 ```
 
-`file` phải trỏ vào file trong thư mục `src` (không phải `install`), rồi build lại để các node
-khác đọc bản mới. Lái robot đến từng chỗ, dừng hẳn, gõ tên rồi Enter:
+### Bước 1. Vẽ map và đánh dấu điểm đến cùng lúc
 
-```
-> bếp
-  Vị trí: x=1.50 y=-0.25 hướng=90°
-  id (không dấu) [bep]:
-  Thêm bí danh, cách nhau dấu phẩy (đang có: nhà bếp, chỗ nấu ăn, khu bếp): chỗ tủ lạnh
-  -> đã cập nhật bep
+```bash
+ros2 launch turtlebot4_navigation slam.launch.py                     # T1: vẽ map
+ros2 launch turtlebot4_viz view_robot.launch.py                      # T2: RViz
+ros2 run voice_person_perception destination_markers --ros-args -p file:=$DEST   # T3
+ros2 run teleop_twist_keyboard teleop_twist_keyboard                 # T4: lái robot
+ros2 run voice_person_perception waypoint_marker --ros-args -p file:=$DEST -p map_name:=lab  # T5
 ```
 
-- Hướng robot lúc lưu là hướng nó sẽ quay mặt khi tới nơi, nên quay robot về phía muốn giao đồ.
-- Tên trùng tên hoặc bí danh có sẵn thì cập nhật điểm đó (gõ "nhà bếp" là sửa `bep`); tên mới
-  thì thêm điểm mới, `id` tự sinh không dấu ("phòng họp" thành `phong_hop`).
-- `p`: lần lưu tới dùng điểm bấm bằng nút "Publish Point" trên RViz thay vì vị trí robot.
-  `l` liệt kê, `d <id>` xóa, `q` thoát. File được lưu sau mỗi lần thêm; lần lưu đầu giữ bản cũ ở
-  `destinations.yaml.bak`. Lúc thoát, công cụ báo những điểm chưa có vị trí.
-- Lưu ý: ghi lại file sẽ thay phần chú thích đầu file bằng chú thích chuẩn.
+1. Trong RViz: **Add → By topic → `/destination_markers`** để thấy các điểm (mũi tên xanh + tên).
+2. Lái robot **hết một vòng** khu vực trước cho map ổn định (SLAM có thể nắn lại map khi quay
+   về chỗ cũ, làm lệch các điểm đã ghi trước đó).
+3. Lái tới từng chỗ cần giao đồ, **dừng hẳn**, quay mặt robot về hướng muốn đứng khi tới nơi,
+   rồi gõ tên ở T5:
+
+   ```
+   > bếp
+     Vị trí: x=1.50 y=-0.25 hướng=90°
+     id (không dấu) [bep]:
+     Thêm bí danh, cách nhau dấu phẩy (đang có: nhà bếp, chỗ nấu ăn, khu bếp): chỗ tủ lạnh
+     -> đã cập nhật bep
+   ```
+
+   Mũi tên mới hiện ngay trên RViz. Đồ vật cũng làm như vậy: đứng cạnh tủ lạnh, gõ `tủ lạnh`
+   (thành điểm riêng), hoặc thêm `tủ lạnh` làm bí danh của `bep`.
+4. Gõ `q` ở T5. Công cụ báo điểm nào còn thiếu vị trí.
+
+### Bước 2. Lưu map (khi SLAM vẫn đang chạy)
+
+```bash
+mkdir -p ~/maps && ros2 run nav2_map_server map_saver_cli -f ~/maps/lab
+```
+
+Được `~/maps/lab.yaml` và `lab.pgm`. Các điểm vừa ghi dùng đúng hệ tọa độ của map này. Vẽ map
+mới thì phải đánh dấu lại.
+
+### Bước 3. Chạy trên map đã lưu và kiểm tra điểm
+
+Tắt T1 (SLAM), rồi:
+
+```bash
+ros2 launch turtlebot4_navigation localization.launch.py map:=$HOME/maps/lab.yaml   # T1
+ros2 launch turtlebot4_navigation nav2.launch.py                                     # T6
+```
+
+Trong RViz bấm **2D Pose Estimate** đặt vị trí ban đầu của robot. Các mũi tên phải nằm đúng chỗ
+trên map. Điểm nào lệch: lái robot tới đúng chỗ, chạy lại `waypoint_marker` (T5), gõ đúng tên đó
+và chọn ghi đè.
+
+### Bước 4. Thử cho robot đi tới một điểm (chưa cần giọng nói)
+
+```bash
+ros2 run voice_person_perception nav_goal_cmd bep --file $DEST     # in lệnh, bỏ `bep` để in tất cả
+```
+
+Chép lệnh `ros2 action send_goal ...` nó in ra, chạy là robot tự đi tới bếp bằng Nav2. Làm
+lần lượt mọi điểm để chắc đường đi được trước khi ghép giọng nói.
+
+### Bước 5. Ra lệnh bằng giọng nói
+
+```bash
+ros2 launch voice_person_perception perception.launch.py destinations_file:=$DEST   # T7
+ros2 topic echo /voice_command                                      # T8: xem lệnh đã hiểu
+```
+
+Nói "mang đồ đến bếp" sẽ ra `"intent": "GO_TO", "destination": "bep"`. Node thực thi (phần của
+bạn làm thực thi) nhận `/voice_command`, tra `pose` của `bep` trong cùng `destinations.yaml` rồi
+gửi `NavigateToPose` như bước 4; dừng/hủy, hỏi lại và né người cũng ở node đó. Định dạng xem
+[INTERFACE.md](INTERFACE.md).
+
+### Lệnh trong `waypoint_marker`
+
+| Gõ | Tác dụng |
+|---|---|
+| tên (vd. `bếp`) | Lưu vị trí robot cho điểm đó. Tên hoặc bí danh đã có thì cập nhật điểm cũ (gõ `nhà bếp` là sửa `bep`); tên mới thì thêm điểm, `id` tự sinh không dấu (`phòng họp` thành `phong_hop`) |
+| `p` | Lần lưu tới dùng điểm bấm bằng nút **Publish Point** trên RViz thay vì vị trí robot |
+| `l` | Liệt kê các điểm |
+| `d <id>` | Xóa một điểm |
+| `q` | Thoát |
+
+File được lưu sau mỗi lần thêm; lần lưu đầu giữ bản cũ ở `destinations.yaml.bak`. Công cụ từ
+chối lưu nếu không có vị trí robot mới (quá 2 s), tức là SLAM/AMCL chưa chạy hoặc chưa đặt vị trí
+ban đầu. Ghi file sẽ thay phần chú thích đầu file bằng chú thích chuẩn.
+
+Luôn truyền `destinations_file:=$DEST` khi chạy `perception.launch.py` để node đọc đúng file vừa
+ghi; nếu bỏ trống, node đọc bản trong `install`, phải `colcon build` lại mới thấy điểm mới.
 
 ## Đo độ chính xác giọng nói (`eval_voice`)
 
@@ -210,6 +283,9 @@ message. Các node ROS được kiểm tra bằng bản giả (stub) của `rclp
 - Tốc độ YOLO trên Raspberry Pi 4: nếu chậm, chạy node nhận diện trên laptop cùng
   `ROS_DOMAIN_ID`, hoặc bật phát hiện trên OAK-D (`yolo_spatial.yaml` của `depthai-ros`).
 - `hfov_deg` mặc định 69° là giá trị ước lượng; dùng `camera_info` khi có.
+- `waypoint_marker`, `destination_markers` mới chạy với bản giả của ROS/TF; chưa chạy với SLAM,
+  AMCL và RViz thật. Các lệnh `turtlebot4_navigation` ở bước 1-3 theo tài liệu TB4 Humble, kiểm
+  tra lại tên launch trên máy nhóm.
 
 ## Tích hợp vào repo nhóm
 

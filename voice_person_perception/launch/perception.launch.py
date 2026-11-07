@@ -17,6 +17,8 @@ def generate_launch_description():
                                           'CTranslate2 (vd. PhoWhisper)'),
         DeclareLaunchArgument('model_path', default_value='',
                               description='Thư mục model Vosk (bắt buộc khi backend=vosk)'),
+        DeclareLaunchArgument('destinations_file', default_value='auto',
+                              description='destinations.yaml; auto = bản trong install'),
         DeclareLaunchArgument('vosk_grammar', default_value='false',
                               description='Vosk chỉ nhận câu mẫu sinh từ destinations.yaml'),
         DeclareLaunchArgument('whisper_prompt', default_value='false',
@@ -34,9 +36,12 @@ def generate_launch_description():
                  'device_index': LaunchConfiguration('device_index'),
                  'vosk_grammar': LaunchConfiguration('vosk_grammar'),
                  'whisper_prompt': LaunchConfiguration('whisper_prompt'),
+                 'destinations_file': LaunchConfiguration('destinations_file'),
              }]),
         Node(package='voice_person_perception', executable='intent_resolver_node',
-             name='intent_resolver_node', output='screen'),
+             name='intent_resolver_node', output='screen', parameters=[{
+                 'destinations_file': LaunchConfiguration('destinations_file'),
+             }]),
         Node(package='voice_person_perception', executable='person_detector_node',
              name='person_detector_node', output='screen'),
     ])

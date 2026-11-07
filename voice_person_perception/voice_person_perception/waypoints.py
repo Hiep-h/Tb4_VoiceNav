@@ -132,3 +132,36 @@ def save(path, data, backup=True):
     with open(tmp, 'w', encoding='utf-8') as f:
         f.write(dumps(data))
     os.replace(tmp, path)
+
+
+def nav_goal_command(item, frame='map'):
+    """`ros2 action send_goal` line that drives Nav2 to this destination."""
+    pose = item['pose']
+    _, _, qz, qw = quaternion_from_yaw(float(pose.get('yaw', 0.0)))
+    goal = (f"{{pose: {{header: {{frame_id: {frame}}}, pose: {{position: "
+            f"{{x: {float(pose['x']):.3f}, y: {float(pose['y']):.3f}, z: 0.0}}, "
+            f"orientation: {{x: 0.0, y: 0.0, z: {qz:.4f}, w: {qw:.4f}}}}}}}}}")
+    return ('ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose '
+            f'"{goal}" --feedback')
+
+
+def goal_main(argv=None):
+    """CLI: print the Nav2 goal command for one destination (or all)."""
+    import argparse
+    ap = argparse.ArgumentParser(description='In lệnh gửi robot tới một điểm đến (thử Nav2).')
+    ap.add_argument('id', nargs='?', help='id điểm đến; bỏ trống = in tất cả')
+    ap.add_argument('--file', required=True, help='đường dẫn destinations.yaml')
+    args = ap.parse_args(argv)
+    data = load(args.file)
+    frame = data.get('frame', 'map')
+    items = [find(data, args.id)] if args.id else data['destinations']
+    if args.id and items[0] is None:
+        print(f'Không có điểm {args.id}')
+        return 1
+    for item in items:
+        if 'pose' not in item:
+            print(f"# {item['id']}: chưa có vị trí")
+            continue
+        print(f"# {item['id']} ({item.get('name', '')})")
+        print(nav_goal_command(item, frame))
+    return 0

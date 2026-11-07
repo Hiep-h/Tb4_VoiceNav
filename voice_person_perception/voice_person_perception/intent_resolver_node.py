@@ -36,7 +36,9 @@ class IntentResolverNode(Node):
         self.declare_parameter('min_asr_conf', 0.6)
         self.declare_parameter('dedupe_window_s', 1.5)
 
-        path = self.get_parameter('destinations_file').value or _default_destinations_file()
+        path = self.get_parameter('destinations_file').value
+        if path in ('', 'auto'):
+            path = _default_destinations_file()
         with open(path, encoding='utf-8') as f:
             self._destinations = load_destinations(yaml.safe_load(f))
         self.get_logger().info(
