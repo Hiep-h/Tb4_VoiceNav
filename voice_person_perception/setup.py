@@ -30,6 +30,7 @@ setup(
             'fake_voice_node = voice_person_perception.fake_voice_node:main',
             'fake_person_node = voice_person_perception.fake_person_node:main',
             'eval_voice = voice_person_perception.eval_voice:main',
+            'waypoint_marker = voice_person_perception.waypoint_marker:main',
         ],
     },
 )

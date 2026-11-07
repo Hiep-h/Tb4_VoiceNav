@@ -13,6 +13,26 @@ trước, báo cả nhóm rồi mới sửa code.
 | `/person_detections` | cảm nhận → thực thi | 10 Hz đều đặn | Những người đang thấy |
 | `/asr_mute` | thực thi → cảm nhận | khi cần | `std_msgs/Bool`: `true` = tạm ngừng nghe |
 
+## `config/destinations.yaml` (điểm đến và vị trí trên map)
+
+Một file dùng chung: phần giọng nói đọc `id`, `name`, `aliases`; bên thực thi đọc `pose` để gửi
+`NavigateToPose`.
+
+```yaml
+map: lab_tang3        # tên map lúc đánh dấu; đổi map thì phải đánh dấu lại
+frame: map
+destinations:
+- id: bep
+  name: bếp
+  aliases: [nhà bếp, chỗ tủ lạnh]
+  pose: {x: 1.5, y: -0.25, yaw: 1.571}   # mét, mét, radian (hệ map)
+```
+
+- Ghi bằng `waypoint_marker` (README). Điểm nào chưa có `pose` thì bên thực thi báo
+  "chưa biết đường đến X" thay vì đi.
+- Đồ vật cũng là điểm đến: "tủ lạnh" là bí danh của `bep`, hoặc một `id` riêng đứng cạnh tủ lạnh.
+- Đổi quaternion: `z = sin(yaw/2)`, `w = cos(yaw/2)`, `x = y = 0`.
+
 ## `/voice_command`
 
 ```json

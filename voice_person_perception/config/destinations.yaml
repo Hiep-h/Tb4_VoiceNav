@@ -1,21 +1,22 @@
-# Danh sách điểm đến dùng chung với bên thực thi.
-# `id` phải trùng với tên waypoint trên bản đồ của bên thực thi.
-# `aliases` là các cách nói khác; thêm điểm mới không cần sửa code.
-# Thêm cả các từ mà nhận dạng hay nghe nhầm (xem cột `heard` khi chạy eval_voice).
-# Viết số bằng chữ trong aliases ("một không một"): grammar của Vosk bỏ qua cụm có chữ số.
+# Danh sách điểm đến dùng chung giữa phần giọng nói và bên thực thi.
+# - id: tên waypoint mà /voice_command gửi đi (không dấu, không cách).
+# - name, aliases: các cách gọi; thêm cả từ mà nhận dạng hay nghe nhầm.
+#   Viết số bằng chữ trong aliases ("một không một").
+# - pose: vị trí robot cần tới, hệ `map` của bản đồ ghi ở `map`; yaw tính bằng radian.
+# Ghi bằng `ros2 run voice_person_perception waypoint_marker`, sửa tay cũng được.
 destinations:
-  - id: bep
-    name: bếp
-    aliases: [nhà bếp, chỗ nấu ăn, khu bếp]
-  - id: phong_khach
-    name: phòng khách
-    aliases: [phòng sinh hoạt, chỗ tiếp khách]
-  - id: phong_101
-    name: phòng 101
-    aliases: [phòng một không một, phòng một trăm linh một]
-  - id: phong_102
-    name: phòng 102
-    aliases: [phòng một không hai, phòng một trăm linh hai]
-  - id: tram_sac
-    name: trạm sạc
-    aliases: [chỗ sạc, về trạm, về chỗ sạc]
+- id: bep
+  name: bếp
+  aliases: [nhà bếp, chỗ nấu ăn, khu bếp]
+- id: phong_khach
+  name: phòng khách
+  aliases: [phòng sinh hoạt, chỗ tiếp khách]
+- id: phong_101
+  name: phòng 101
+  aliases: [phòng một không một, phòng một trăm linh một]
+- id: phong_102
+  name: phòng 102
+  aliases: [phòng một không hai, phòng một trăm linh hai]
+- id: tram_sac
+  name: trạm sạc
+  aliases: [chỗ sạc, về trạm, về chỗ sạc]

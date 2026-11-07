@@ -6,7 +6,7 @@ và **nhận diện người bằng camera OAK-D**. Package chỉ phát kết qu
 [INTERFACE.md](INTERFACE.md).
 
 ```
-Micro → VAD → nhận dạng (Vosk | Whisper) → /speech_text → bộ hiểu lệnh → /voice_command
+Micro → VAD → nhận dạng (Google, Whisper dự phòng | Vosk) → /speech_text → bộ hiểu lệnh → /voice_command
 OAK-D RGB + depth → YOLOv8n (người) + khoảng cách + góc ──────────────────→ /person_detections
 ```
 
@@ -14,13 +14,17 @@ OAK-D RGB + depth → YOLOv8n (người) + khoảng cách + góc ─────
 
 ```
 voice_person_perception/            package ROS 2 (ament_python)
-├── config/destinations.yaml        điểm đến và cách nói khác (thêm điểm không cần sửa code)
+├── config/destinations.yaml        điểm đến, cách nói khác và vị trí trên map (dùng chung)
+├── config/eval_phrases.yaml        câu thử cho eval_voice
 ├── launch/perception.launch.py     chạy thật: micro + camera
 ├── launch/fake.launch.py           giả lập cho bên thực thi test khi chưa có robot
 ├── launch/record_bag.launch.py     thu đầu ra thành rosbag để gửi người khác
 ├── voice_person_perception/
 │   ├── intent.py, vad.py, person_math.py, asr_backends.py   logic thuần, có test
+│   ├── vocab.py, waypoints.py                               logic thuần, có test
 │   ├── asr_node.py, intent_resolver_node.py, person_detector_node.py
+│   ├── waypoint_marker.py          đánh dấu điểm đến trên map, ghi vào destinations.yaml
+│   ├── eval_voice.py               đo độ chính xác + độ trễ giọng nói
 │   └── fake_voice_node.py, fake_person_node.py
 └── test/                           pytest, không cần ROS
 ```
@@ -97,6 +101,35 @@ Mặc định tắt cả hai, bật sau khi `eval_voice` cho thấy có lợi tr
 
 **Thêm bí danh theo lỗi nhận dạng:** sau khi đo, xem cột `heard` trong file kết quả. Từ nào ASR hay
 nghe nhầm cho một điểm đến (ví dụ "phòng khác" thay vì "phòng khách") thì thêm vào `aliases`.
+
+## Đánh dấu điểm đến trên map (`waypoint_marker`)
+
+Làm sau khi đã có map. Bật định vị trên map đó (vd. `ros2 launch turtlebot4_navigation
+localization.launch.py map:=lab.yaml`, đặt initial pose trong RViz), rồi ở terminal khác:
+
+```bash
+ros2 run voice_person_perception waypoint_marker --ros-args \
+    -p file:=$PWD/src/<repo>/voice_person_perception/config/destinations.yaml -p map_name:=lab
+```
+
+`file` phải trỏ vào file trong thư mục `src` (không phải `install`), rồi build lại để các node
+khác đọc bản mới. Lái robot đến từng chỗ, dừng hẳn, gõ tên rồi Enter:
+
+```
+> bếp
+  Vị trí: x=1.50 y=-0.25 hướng=90°
+  id (không dấu) [bep]:
+  Thêm bí danh, cách nhau dấu phẩy (đang có: nhà bếp, chỗ nấu ăn, khu bếp): chỗ tủ lạnh
+  -> đã cập nhật bep
+```
+
+- Hướng robot lúc lưu là hướng nó sẽ quay mặt khi tới nơi, nên quay robot về phía muốn giao đồ.
+- Tên trùng tên hoặc bí danh có sẵn thì cập nhật điểm đó (gõ "nhà bếp" là sửa `bep`); tên mới
+  thì thêm điểm mới, `id` tự sinh không dấu ("phòng họp" thành `phong_hop`).
+- `p`: lần lưu tới dùng điểm bấm bằng nút "Publish Point" trên RViz thay vì vị trí robot.
+  `l` liệt kê, `d <id>` xóa, `q` thoát. File được lưu sau mỗi lần thêm; lần lưu đầu giữ bản cũ ở
+  `destinations.yaml.bak`. Lúc thoát, công cụ báo những điểm chưa có vị trí.
+- Lưu ý: ghi lại file sẽ thay phần chú thích đầu file bằng chú thích chuẩn.
 
 ## Đo độ chính xác giọng nói (`eval_voice`)
 

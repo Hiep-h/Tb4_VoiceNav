@@ -17,3 +17,6 @@ bags/
 # Bản ghi âm và kết quả của eval_voice
 eval_audio/
 results_*.csv
+
+# Bản lưu tự động của waypoint_marker
+*.yaml.bak
