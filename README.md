@@ -40,7 +40,8 @@ source install/setup.bash
 Model nhận dạng giọng nói (chọn một):
 
 - **Vosk (nhẹ, nhanh, hợp Raspberry Pi):** `bash scripts/download_vosk_model.sh` tải model tiếng
-  Việt nhỏ về `models/`. Tên và link lấy theo trang Vosk, bạn kiểm tra lại nếu tải lỗi.
+  Việt nhỏ `vosk-model-small-vn-0.4` về `models/` (đã chạy được offline trong bài trước: nạp 0,11 s,
+  nhận dạng clip 2 s mất 1,39 s trên laptop).
 - **Whisper (chính xác hơn với câu tự do, chậm hơn):** `faster-whisper` tự tải model lần đầu
   chạy; dùng `backend:=whisper`.
 
@@ -64,11 +65,59 @@ Tham số hay chỉnh (`--ros-args -p tên:=giá trị`):
 | `asr_node` | `backend`, `model_path` | `vosk`, rỗng | Bộ nhận dạng và model |
 | | `device_index` | `-1` | Chỉ số micro; xem `python3 -m sounddevice` |
 | | `min_rms` | `250` | Ngưỡng tiếng tối thiểu; ngưỡng thật tự theo tiếng ồn nền |
+| | `vosk_grammar` | `false` | Vosk chỉ nhận câu mẫu sinh từ `destinations.yaml` (xem dưới) |
+| | `whisper_prompt` | `false` | Gợi ý tên điểm đến cho Whisper (`initial_prompt`) |
 | `intent_resolver_node` | `confident` | `0.97` | Điểm khớp tối thiểu để không hỏi lại |
 | | `accept` | `0.75` | Dưới mức này coi là `UNKNOWN` |
 | `person_detector_node` | `image_topic`, `depth_topic`, `camera_info_topic` | `/oakd/rgb/preview/...` | Topic camera; **xác nhận bằng `ros2 topic list` trên robot** |
 | | `hfov_deg` | `69` | Góc nhìn ngang dùng khi không có `camera_info` |
 | | `infer_rate_hz`, `imgsz` | `5`, `320` | Giảm nếu CPU yếu |
+
+### Thiên vị nhận dạng về danh sách lệnh
+
+Cả hai đều lấy danh sách điểm đến từ `destinations.yaml` (`voice_person_perception/vocab.py`),
+bật qua launch: `vosk_grammar:=true` hoặc `whisper_prompt:=true`.
+
+- **Vosk grammar:** chỉ nhận khoảng 300 câu mẫu ("đi đến X", "mang đồ đến X", "giao đến X", "X",
+  câu dừng/hủy) hoặc `[unk]`. Chính xác hơn nhiều với tập lệnh nhỏ, nhưng câu nói ngoài mẫu sẽ bị
+  ép về câu mẫu gần nhất hoặc mất chữ. Rủi ro: tên chỗ không có trong danh sách ("nhà vệ sinh")
+  có thể bị nghe thành một điểm đến có thật. Cột `wrong_auto` của `eval_voice` đo đúng lỗi này.
+- **Whisper prompt:** giúp Whisper viết đúng tên điểm đến; câu nào lặp lại chính prompt bị bỏ.
+
+Mặc định tắt cả hai, bật sau khi `eval_voice` cho thấy có lợi trên giọng thật.
+
+**Thêm bí danh theo lỗi nhận dạng:** sau khi đo, xem cột `heard` trong file kết quả. Từ nào ASR hay
+nghe nhầm cho một điểm đến (ví dụ "phòng khác" thay vì "phòng khách") thì thêm vào `aliases`.
+
+## Đo độ chính xác giọng nói (`eval_voice`)
+
+Chạy cùng khâu cắt câu, nhận dạng và hiểu lệnh như trên robot, không cần ROS đang chạy. Câu thử ở
+`config/eval_phrases.yaml` (có câu dừng, hủy và điểm đến không tồn tại).
+
+```bash
+# 1) Ghi âm: mỗi câu nói 3 lần, lưu WAV để so sánh lại
+ros2 run voice_person_perception eval_voice --backend vosk \
+    --model-path models/vosk-model-small-vn-0.4 --reps 3 --record-dir eval_audio/hiep
+# 2) Chạy lại CÙNG bản ghi với cấu hình khác
+ros2 run voice_person_perception eval_voice --backend vosk \
+    --model-path models/vosk-model-small-vn-0.4 --vosk-grammar --from-dir eval_audio/hiep
+ros2 run voice_person_perception eval_voice --backend whisper --whisper-prompt --from-dir eval_audio/hiep
+```
+
+Mỗi lần in tỉ lệ đúng, số mẫu theo loại kết quả và thời gian nhận dạng (trung bình, p90), và ghi
+`results_<cấu hình>.csv` cạnh bản ghi. Loại kết quả:
+
+| Loại | Ý nghĩa |
+|---|---|
+| `correct_auto` | Đúng, robot đi luôn |
+| `correct_confirm` | Đúng nhưng robot hỏi lại |
+| `wrong_confirm` | Sai nhưng robot hỏi lại hoặc không làm gì (an toàn) |
+| `missed` | Không nhận ra chữ nào |
+| `wrong_auto` | Sai mà robot vẫn làm: lỗi nguy hiểm nhất, cần bằng 0 |
+
+Thời gian đo chỉ là khâu nhận dạng sau khi nói xong; độ trễ đầy đủ còn cộng thêm `end_silence_ms`
+(0,7 s chờ im lặng). Nên ghi âm nhiều người, ở chỗ có tiếng ồn giống lúc demo. Bản ghi `eval_audio/`
+không commit.
 
 ## Thu dữ liệu bằng ros2 bag
 

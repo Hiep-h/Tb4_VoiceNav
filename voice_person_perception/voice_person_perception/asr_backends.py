@@ -8,20 +8,26 @@ import re
 
 import numpy as np
 
+from voice_person_perception.vocab import UNK
+
 # Whisper tends to invent these on silence or noise.
 _HALLUCINATIONS = re.compile(
     r'(cảm ơn các bạn|đăng ký kênh|hẹn gặp lại các bạn|subscribe|'
     r'ghiền mì gõ|like và share|thanks for watching)', re.IGNORECASE)
 
 
+# With an initial_prompt, Whisper sometimes repeats the prompt on noise.
+_PROMPT_ECHO = re.compile(r'(các điểm đến|lệnh cho robot giao đồ)', re.IGNORECASE)
+
+
 def is_hallucination(text):
-    return bool(_HALLUCINATIONS.search(text))
+    return bool(_HALLUCINATIONS.search(text) or _PROMPT_ECHO.search(text))
 
 
 class VoskBackend:
     """Offline streaming recogniser; fast on a Raspberry Pi."""
 
-    def __init__(self, model_path, sample_rate=16000):
+    def __init__(self, model_path, sample_rate=16000, grammar=None):
         try:
             import vosk
         except ImportError as exc:
@@ -30,13 +36,19 @@ class VoskBackend:
         self._vosk = vosk
         self._model = vosk.Model(model_path)
         self._rate = sample_rate
+        # grammar: list of allowed phrases (see vocab.vosk_grammar) or None.
+        self._grammar = json.dumps(grammar, ensure_ascii=False) if grammar else None
 
     def transcribe(self, audio):
-        rec = self._vosk.KaldiRecognizer(self._model, self._rate)
+        if self._grammar:
+            rec = self._vosk.KaldiRecognizer(self._model, self._rate, self._grammar)
+        else:
+            rec = self._vosk.KaldiRecognizer(self._model, self._rate)
         rec.SetWords(True)
         rec.AcceptWaveform(audio.astype(np.int16).tobytes())
         result = json.loads(rec.FinalResult())
-        text = result.get('text', '').strip()
+        text = result.get('text', '').replace(UNK, ' ').strip()
+        text = ' '.join(text.split())
         if not text:
             return None
         confs = [w.get('conf', 1.0) for w in result.get('result', [])]
@@ -47,19 +59,21 @@ class WhisperBackend:
     """faster-whisper; more accurate on free speech, slower on small CPUs."""
 
     def __init__(self, model_size='small', language='vi', device='cpu',
-                 compute_type='int8'):
+                 compute_type='int8', prompt=None):
         try:
             from faster_whisper import WhisperModel
         except ImportError as exc:
             raise RuntimeError('Cài faster-whisper: pip install faster-whisper') from exc
         self._model = WhisperModel(model_size, device=device, compute_type=compute_type)
         self._language = language
+        self._prompt = prompt or None
 
     def transcribe(self, audio):
         samples = audio.astype(np.float32) / 32768.0
         segments, _ = self._model.transcribe(
             samples, language=self._language, beam_size=1,
-            condition_on_previous_text=False, vad_filter=False)
+            condition_on_previous_text=False, vad_filter=False,
+            initial_prompt=self._prompt)
         parts, confs = [], []
         for seg in segments:
             if seg.no_speech_prob > 0.6:
@@ -73,11 +87,11 @@ class WhisperBackend:
 
 
 def make_backend(name, model_path='', whisper_model='small', language='vi',
-                 sample_rate=16000):
+                 sample_rate=16000, grammar=None, prompt=None):
     if name == 'vosk':
         if not model_path:
             raise RuntimeError('Backend vosk cần tham số model_path')
-        return VoskBackend(model_path, sample_rate)
+        return VoskBackend(model_path, sample_rate, grammar)
     if name == 'whisper':
-        return WhisperBackend(whisper_model, language)
+        return WhisperBackend(whisper_model, language, prompt=prompt)
     raise RuntimeError(f'Backend không hợp lệ: {name}')

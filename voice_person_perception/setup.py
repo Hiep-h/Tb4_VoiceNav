@@ -29,6 +29,7 @@ setup(
             'person_detector_node = voice_person_perception.person_detector_node:main',
             'fake_voice_node = voice_person_perception.fake_voice_node:main',
             'fake_person_node = voice_person_perception.fake_person_node:main',
+            'eval_voice = voice_person_perception.eval_voice:main',
         ],
     },
 )

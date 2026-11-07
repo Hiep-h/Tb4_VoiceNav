@@ -5,11 +5,14 @@ import threading
 import time
 
 import rclpy
+import yaml
 from rclpy.node import Node
 from std_msgs.msg import Bool, String
 
 from voice_person_perception import contract
+from voice_person_perception import vocab
 from voice_person_perception.asr_backends import make_backend
+from voice_person_perception.intent_resolver_node import _default_destinations_file
 from voice_person_perception.vad import EnergyVad, resample_to
 
 TARGET_RATE = 16000
@@ -26,11 +29,26 @@ class AsrNode(Node):
         self.declare_parameter('device_index', -1)
         self.declare_parameter('min_rms', 250.0)
         self.declare_parameter('end_silence_ms', 700)
+        # Bias recognition towards the command vocabulary (see vocab.py).
+        self.declare_parameter('destinations_file', '')
+        self.declare_parameter('vosk_grammar', False)
+        self.declare_parameter('whisper_prompt', False)
 
         get = lambda name: self.get_parameter(name).value  # noqa: E731
+        grammar = prompt = None
+        if get('vosk_grammar') or get('whisper_prompt'):
+            path = get('destinations_file') or _default_destinations_file()
+            with open(path, encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            if get('vosk_grammar'):
+                grammar = vocab.vosk_grammar(data)
+                self.get_logger().info(f'Vosk grammar: {len(grammar)} câu mẫu từ {path}')
+            if get('whisper_prompt'):
+                prompt = vocab.whisper_prompt(data)
+                self.get_logger().info(f'Whisper prompt: "{prompt}"')
         self._backend = make_backend(
             get('backend'), get('model_path'), get('whisper_model'),
-            get('language'), TARGET_RATE)
+            get('language'), TARGET_RATE, grammar=grammar, prompt=prompt)
         self._vad = EnergyVad(TARGET_RATE, min_rms=float(get('min_rms')),
                               end_silence_ms=int(get('end_silence_ms')))
 

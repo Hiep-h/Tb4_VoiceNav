@@ -1,0 +1,14 @@
+# Câu thử cho `eval_voice` (đo nhận dạng giọng nói + hiểu lệnh).
+# `expect_destination` phải là `id` trong destinations.yaml; bỏ trống với STOP/CANCEL/UNKNOWN.
+# Câu UNKNOWN là điểm đến KHÔNG có trong danh sách: robot phải không đi đâu cả.
+cases:
+  - {say: "đi đến phòng khách", expect_intent: GO_TO, expect_destination: phong_khach}
+  - {say: "mang đồ xuống bếp giúp mình", expect_intent: GO_TO, expect_destination: bep}
+  - {say: "mang cái này ra chỗ nấu ăn", expect_intent: GO_TO, expect_destination: bep}
+  - {say: "giao đến phòng một trăm linh một", expect_intent: GO_TO, expect_destination: phong_101}
+  - {say: "đem qua phòng một không hai nhé", expect_intent: GO_TO, expect_destination: phong_102}
+  - {say: "về trạm sạc đi", expect_intent: GO_TO, expect_destination: tram_sac}
+  - {say: "dừng lại", expect_intent: STOP}
+  - {say: "thôi không cần nữa", expect_intent: CANCEL}
+  - {say: "đi đến nhà vệ sinh", expect_intent: UNKNOWN}
+  - {say: "hôm nay trời đẹp quá", expect_intent: UNKNOWN}

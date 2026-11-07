@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tải model Vosk tiếng Việt nhỏ về models/. Tên model theo trang https://alphacephei.com/vosk/models
-# (chưa kiểm tra được trong lúc viết; nếu lỗi, vào trang đó lấy tên model Vietnamese mới nhất).
+# Tải model Vosk tiếng Việt nhỏ về models/ (https://alphacephei.com/vosk/models).
+# vosk-model-small-vn-0.4 đã chạy được offline trong bài Tb4_VoiceNav_Map.
 set -euo pipefail
 
 MODEL="${1:-vosk-model-small-vn-0.4}"
