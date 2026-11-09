@@ -39,7 +39,7 @@ Ubuntu 22.04, ROS 2 Humble.
 
 ```bash
 cd ~/ros2_ws/src && git clone <repo này> && cd ..
-pip install -r requirements.txt
+pip install -r requirements.txt      # đã ghim numpy<2, opencv<4.12 cho ROS Humble
 sudo apt install portaudio19-dev            # cho sounddevice
 colcon build --packages-select voice_person_perception
 source install/setup.bash

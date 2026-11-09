@@ -1,4 +1,5 @@
-numpy
+numpy<2             # ROS 2 Humble (cv_bridge, rclpy) build với numpy 1.x
+opencv-python<4.12  # từ 4.12 opencv đòi numpy>=2
 pyyaml
 rapidfuzz>=3.0
 sounddevice
