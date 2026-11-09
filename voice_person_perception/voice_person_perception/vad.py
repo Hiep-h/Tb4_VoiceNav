@@ -55,6 +55,7 @@ class EnergyVad:
     def reset(self):
         self._noise_floor = None
         self._calibrating = self.calibration_frames
+        self.last_level = 0.0
         self._voiced = 0
         self._in_speech = False
         self._speech_run = 0
@@ -62,6 +63,38 @@ class EnergyVad:
         self._frames = []
         self._preroll.clear()
         self._tail = np.zeros(0, dtype=np.int16)
+
+    def clear(self):
+        """Drop any half-collected utterance but keep the measured noise floor."""
+        self._voiced = 0
+        self._in_speech = False
+        self._speech_run = 0
+        self._silence_run = 0
+        self._frames = []
+        self._preroll.clear()
+        self._tail = np.zeros(0, dtype=np.int16)
+
+    def observe_noise(self, chunk):
+        """Update the noise floor from audio known to be background (not listening)."""
+        data = chunk.astype(np.int16)
+        for i in range(len(data) // self.frame_len):
+            level = rms(data[i * self.frame_len:(i + 1) * self.frame_len])
+            self.last_level = level
+            if self._calibrating > 0:
+                self._calibrating -= 1
+                weight = 0.2
+            else:
+                weight = 0.05
+            self._noise_floor = (level if self._noise_floor is None
+                                 else (1 - weight) * self._noise_floor + weight * level)
+
+    @property
+    def in_speech(self):
+        return self._in_speech
+
+    @property
+    def calibrating(self):
+        return self._calibrating > 0
 
     @property
     def threshold(self):
@@ -83,6 +116,7 @@ class EnergyVad:
 
     def _step(self, frame):
         level = rms(frame)
+        self.last_level = level
         if self._calibrating > 0:
             # Assume nobody is speaking right after start-up.
             self._calibrating -= 1

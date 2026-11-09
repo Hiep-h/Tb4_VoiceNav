@@ -65,3 +65,20 @@ def test_resample_length():
 def test_hallucination_filter():
     assert is_hallucination('Hãy đăng ký kênh để ủng hộ')
     assert not is_hallucination('mang đến phòng khách')
+
+
+def test_clear_keeps_noise_floor_and_observe_noise_calibrates():
+    import numpy as np
+    from voice_person_perception.vad import EnergyVad
+    rng = np.random.default_rng(0)
+    vad = EnergyVad(16000)
+    noise = rng.normal(0, 100, 16000).astype(np.int16)
+    vad.observe_noise(noise)
+    assert not vad.calibrating
+    floor = vad.threshold
+    assert floor > vad.min_rms  # 3 x ~100 rms is above min_rms 250
+    t = np.arange(4800) / 16000
+    vad.feed((5000 * np.sin(2 * np.pi * 300 * t)).astype(np.int16))
+    assert vad.in_speech
+    vad.clear()
+    assert not vad.in_speech and vad.threshold == floor

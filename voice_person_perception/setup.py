@@ -32,6 +32,7 @@ setup(
             'waypoint_marker = voice_person_perception.waypoint_marker:main',
             'destination_markers = voice_person_perception.destination_markers:main',
             'nav_goal_cmd = voice_person_perception.waypoints:goal_main',
+            'voice_gui = voice_person_perception.voice_gui:main',
         ],
     },
 )

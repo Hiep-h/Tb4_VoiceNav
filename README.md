@@ -28,6 +28,7 @@ voice_person_perception/            package ROS 2 (ament_python)
 │   ├── asr_node.py, intent_resolver_node.py, person_detector_node.py
 │   ├── waypoint_marker.py          đánh dấu điểm đến trên map, ghi vào destinations.yaml
 │   ├── destination_markers.py      vẽ các điểm đến lên RViz, tự cập nhật khi file đổi
+│   ├── voice_gui.py, gui_render.py giao diện: nút nói, lệnh đã hiểu, bản đồ/radar người
 │   ├── eval_voice.py               đo độ chính xác + độ trễ giọng nói
 │   └── fake_voice_node.py, fake_person_node.py
 └── test/                           pytest, không cần ROS
@@ -75,6 +76,29 @@ ros2 launch voice_person_perception perception.launch.py fallback:=none   # ch�
 ros2 launch voice_person_perception fake.launch.py
 ```
 
+### Giao diện (`voice_gui`)
+
+![voice_gui](docs/voice_gui.png)
+
+```bash
+# Laptop, chưa có camera: giọng nói + giao diện, bấm nút để nói
+ros2 launch voice_person_perception perception.launch.py person:=false gui:=true push_to_talk:=true
+# Có bản đồ: vẽ thêm điểm đến, vị trí robot và người lên bản đồ
+ros2 launch voice_person_perception perception.launch.py gui:=true push_to_talk:=true \
+    map_yaml:=$HOME/maps/lab.yaml destinations_file:=$DEST
+# Xem dữ liệu giả
+ros2 launch voice_person_perception fake.launch.py gui:=true
+```
+
+- **Trái:** nút micro (xám: bấm để nói; đỏ: đang nghe; vàng: đang nhận dạng), mức âm lượng so với
+  ngưỡng (vạch đen), câu vừa nghe, lệnh robot hiểu (xanh: đi luôn; vàng: cần xác nhận; đỏ: dừng),
+  tóm tắt người phía trước, bộ nhận dạng đang dùng.
+- **Phải:** có `map_yaml` thì là bản đồ với điểm đến (xanh lá: đang tới), robot và người (cần
+  SLAM/AMCL để có vị trí robot); không có thì là radar người quanh robot (0,5 / 1 / 2 / 3 m).
+- Bấm nút hoặc phím **Space** để nói một câu (bấm lần nữa để hủy), **Q** để đóng. Không có
+  `push_to_talk:=true` thì micro nghe liên tục và nút dùng để tắt/bật micro.
+- Giao diện chỉ hiển thị và gửi `/asr_listen`; vẫn cần `asr_node`, `intent_resolver_node`.
+
 Tham số hay chỉnh (`--ros-args -p tên:=giá trị`):
 
 | Node | Tham số | Mặc định | Ý nghĩa |
@@ -82,7 +106,8 @@ Tham số hay chỉnh (`--ros-args -p tên:=giá trị`):
 | `asr_node` | `backend` | `google` | `google`, `whisper` hoặc `vosk` |
 | | `fallback` | `whisper` | Bộ dự phòng khi `backend` lỗi; `none` = không dùng |
 | | `whisper_model` | `small` | Cỡ model hoặc thư mục model CTranslate2 (PhoWhisper) |
-| | `model_path` | rỗng | Thư mục model Vosk (khi dùng Vosk) |
+| | `model_path` | `none` | Thư mục model Vosk (khi dùng Vosk) |
+| | `push_to_talk` | `false` | Chỉ nghe một câu sau mỗi lần bấm nút (`voice_gui`, `/asr_listen`) |
 | | `device_index` | `-1` | Chỉ số micro; xem `python3 -m sounddevice` |
 | | `min_rms` | `250` | Ngưỡng tiếng tối thiểu; ngưỡng thật tự theo tiếng ồn nền |
 | | `vosk_grammar` | `false` | Vosk chỉ nhận câu mẫu sinh từ `destinations.yaml` (xem dưới) |

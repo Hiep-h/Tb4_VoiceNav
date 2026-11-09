@@ -8,6 +8,16 @@ SPEECH_TEXT_TOPIC = '/speech_text'
 VOICE_COMMAND_TOPIC = '/voice_command'
 PERSON_TOPIC = '/person_detections'
 ASR_MUTE_TOPIC = '/asr_mute'
+ASR_STATUS_TOPIC = '/asr_status'
+ASR_LISTEN_TOPIC = '/asr_listen'  # push-to-talk: True = listen for one sentence, False = cancel
+
+# asr_node states shown by voice_gui
+ASR_MUTED = 'muted'              # muted by the executor (/asr_mute), e.g. while robot speaks
+ASR_IDLE = 'idle'                # push-to-talk: waiting for the button
+ASR_CALIBRATING = 'calibrating'  # measuring room noise, keep quiet
+ASR_LISTENING = 'listening'      # waiting for speech
+ASR_SPEECH = 'speech'            # someone is talking
+ASR_RECOGNIZING = 'recognizing'  # utterance sent to the recogniser
 
 INTENT_GO_TO = 'GO_TO'
 INTENT_STOP = 'STOP'
@@ -61,4 +71,19 @@ def make_person_message(stamp, persons, healthy, frame_age_s):
         'healthy': healthy,
         'frame_age_s': None if frame_age_s is None else round(frame_age_s, 2),
         'persons': persons,
+    }
+
+
+def make_asr_status(stamp, state, level, threshold, backend, fallback, backup_ready,
+                    push_to_talk):
+    return {
+        'v': SCHEMA_VERSION,
+        'stamp': round(stamp, 3),
+        'state': state,
+        'level': round(float(level), 1),
+        'threshold': round(float(threshold), 1),
+        'backend': backend,
+        'fallback': fallback,
+        'backup_ready': backup_ready,
+        'push_to_talk': push_to_talk,
     }

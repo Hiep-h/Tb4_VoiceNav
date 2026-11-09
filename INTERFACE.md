@@ -12,6 +12,8 @@ trước, báo cả nhóm rồi mới sửa code.
 | `/voice_command` | cảm nhận → thực thi | theo sự kiện | Một lệnh nói đã hiểu |
 | `/person_detections` | cảm nhận → thực thi | 10 Hz đều đặn | Những người đang thấy |
 | `/asr_mute` | thực thi → cảm nhận | khi cần | `std_msgs/Bool`: `true` = tạm ngừng nghe |
+| `/asr_status` | cảm nhận → (giao diện) | 10 Hz | Trạng thái micro; bên thực thi không bắt buộc dùng |
+| `/asr_listen` | giao diện → cảm nhận | khi bấm nút | `std_msgs/Bool`: `true` = nghe một câu (bấm-để-nói) |
 
 ## `config/destinations.yaml` (điểm đến và vị trí trên map)
 
@@ -85,6 +87,23 @@ Quy ước:
 
 Bên thực thi gửi `true` trong lúc robot phát tiếng bíp hoặc nói, `false` sau đó, để micro
 không nghe lại chính robot.
+
+## `/asr_status` và `/asr_listen` (giao diện `voice_gui`)
+
+`/asr_status` (`std_msgs/String`, JSON), ví dụ:
+
+```json
+{"v":1,"stamp":12.3,"state":"listening","level":180.5,"threshold":250.0,
+ "backend":"google","fallback":"whisper","backup_ready":true,"push_to_talk":true}
+```
+
+`state`: `idle` (bấm-để-nói, chờ nút), `calibrating` (đo tiếng ồn), `listening` (chờ người nói),
+`speech` (đang có người nói), `recognizing` (đang nhận dạng), `muted` (bị `/asr_mute` tắt).
+Bên thực thi có thể dùng `speech`/`recognizing` để biết người dùng đang ra lệnh.
+
+`/asr_listen`: `true` = nghe một câu rồi tự dừng (khi `asr_node` chạy `push_to_talk:=true`), tự hủy
+nếu 8 s không ai nói; `false` = hủy. Không có `push_to_talk` thì `true`/`false` là bật/tắt micro.
+`/asr_mute` của bên thực thi vẫn ưu tiên hơn.
 
 ## Phát lại từ rosbag
 

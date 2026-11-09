@@ -36,6 +36,10 @@ class AsrNode(Node):
         self.declare_parameter('destinations_file', '')
         self.declare_parameter('vosk_grammar', False)
         self.declare_parameter('whisper_prompt', False)
+        # push_to_talk: listen only after /asr_listen True (button in voice_gui), one
+        # sentence at a time; give up after ptt_timeout_s without speech.
+        self.declare_parameter('push_to_talk', False)
+        self.declare_parameter('ptt_timeout_s', 8.0)
 
         get = lambda name: self.get_parameter(name).value  # noqa: E731
         path = (get('destinations_file') if get('destinations_file') not in ('', 'auto')
@@ -61,7 +65,8 @@ class AsrNode(Node):
         # The fallback (Whisper downloads ~500 MB the first time) loads in the
         # background, so the main engine is usable at once.
         self._backend = make_backend(
-            backend, get('model_path'), get('whisper_model'),
+            backend, '' if get('model_path') == 'none' else get('model_path'),
+            get('whisper_model'),
             get('language'), TARGET_RATE, grammar=grammar, prompt=prompt,
             hints=vocab.destination_phrases(data), fallback=fallback, lazy_fallback=True,
             on_fallback=lambda exc: log.warn(f'{backend} lỗi ({exc}), thử {fallback}'),
@@ -75,13 +80,21 @@ class AsrNode(Node):
         self._audio_q = queue.Queue(maxsize=300)
         self._out_q = queue.Queue()
         self._muted = False
+        self._ptt = bool(get('push_to_talk'))
+        self._ptt_timeout = float(get('ptt_timeout_s'))
+        self._armed_at = None  # push-to-talk: monotonic time the button was pressed
+        self._recognizing = False
+        self._names = (backend, fallback)
         self._capture_rate = TARGET_RATE
         self._stop = threading.Event()
         self._dropped = False
 
         self._pub = self.create_publisher(String, contract.SPEECH_TEXT_TOPIC, 10)
         self.create_subscription(Bool, contract.ASR_MUTE_TOPIC, self._on_mute, 10)
+        self.create_subscription(Bool, contract.ASR_LISTEN_TOPIC, self._on_listen, 10)
+        self._status_pub = self.create_publisher(String, contract.ASR_STATUS_TOPIC, 10)
         self.create_timer(0.05, self._flush)
+        self.create_timer(0.1, self._publish_status)
 
         self._open_stream(int(get('device_index')))
         self._worker = threading.Thread(target=self._work, daemon=True)
@@ -89,7 +102,9 @@ class AsrNode(Node):
         self.get_logger().info(
             f"asr_node sẵn sàng: backend={get('backend')}, "
             f"dự phòng={get('fallback') or 'không'}, "
-            f'mic {self._capture_rate} Hz. Đang nghe...')
+            f'mic {self._capture_rate} Hz. '
+            + ('Bấm nút trong voice_gui (hoặc /asr_listen true) để nói.' if self._ptt
+               else 'Đang nghe...'))
 
     def _open_stream(self, device_index):
         try:
@@ -121,27 +136,83 @@ class AsrNode(Node):
     def _on_mute(self, msg):
         self._muted = bool(msg.data)
 
+    def _on_listen(self, msg):
+        if msg.data:
+            self._armed_at = time.monotonic()
+            if not self._ptt:
+                self._muted = False  # always-on mode: the button simply unmutes
+        else:
+            self._armed_at = None
+            if not self._ptt:
+                self._muted = True
+
+    def _listening(self):
+        if self._muted:
+            return False
+        if not self._ptt:
+            return True
+        if self._armed_at is None:
+            return False
+        if (time.monotonic() - self._armed_at > self._ptt_timeout
+                and not self._vad.in_speech):
+            self._armed_at = None  # nobody spoke
+            return False
+        return True
+
+    def state(self):
+        if self._recognizing:
+            return contract.ASR_RECOGNIZING
+        if self._muted:
+            return contract.ASR_MUTED
+        if not self._listening():
+            return contract.ASR_IDLE
+        if self._vad.calibrating:
+            return contract.ASR_CALIBRATING
+        if self._vad.in_speech:
+            return contract.ASR_SPEECH
+        return contract.ASR_LISTENING
+
+    def _publish_status(self):
+        fallback = self._names[1] if self._names[1] not in ('', 'none', self._names[0]) else ''
+        ready = getattr(self._backend, 'backup_ready', None) if fallback else None
+        msg = String()
+        msg.data = contract.dumps(contract.make_asr_status(
+            self.get_clock().now().nanoseconds * 1e-9, self.state(),
+            self._vad.last_level, self._vad.threshold, self._names[0], fallback,
+            ready, self._ptt))
+        self._status_pub.publish(msg)
+
     def _work(self):
         while not self._stop.is_set():
             try:
                 chunk = self._audio_q.get(timeout=0.2)
             except queue.Empty:
                 continue
-            if self._muted:
-                self._vad.reset()
-                continue
             chunk = resample_to(chunk, self._capture_rate, TARGET_RATE)
+            if not self._listening():
+                self._vad.clear()
+                if not self._muted:
+                    # Push-to-talk idle: the room is quiet, keep the noise floor fresh.
+                    self._vad.observe_noise(chunk)
+                continue
             for utterance in self._vad.feed(chunk):
+                if self._ptt:
+                    self._armed_at = None  # one sentence per button press
                 started = time.monotonic()
+                self._recognizing = True
                 try:
                     result = self._backend.transcribe(utterance)
                 except Exception as exc:  # keep listening after a bad utterance
                     self.get_logger().error(f'Lỗi nhận dạng: {exc}')
                     continue
+                finally:
+                    self._recognizing = False
                 if result:
                     text, conf = result
                     engine = getattr(self._backend, 'last_engine', None)
                     self._out_q.put((text, conf, time.monotonic() - started, engine))
+                else:
+                    self.get_logger().info('Không nghe ra chữ nào')
 
     def _flush(self):
         while True:
