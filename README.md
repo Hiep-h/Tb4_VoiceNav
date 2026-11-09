@@ -99,6 +99,10 @@ ros2 launch voice_person_perception fake.launch.py gui:=true
   hoặc **bấm lần nữa để gửi ngay**; bấm lại khi chưa nói gì là hủy. **Q** để đóng. Không có
   `push_to_talk:=true` thì micro nghe liên tục (câu kết thúc khi im 0,7 s, `end_silence_ms`) và
   nút dùng để tắt/bật micro.
+- Nhận dạng sai nhiều: chạy thêm `save_audio_dir:=~/asr_debug` (tham số của `asr_node`). Mỗi câu
+  được lưu thành WAV kèm chữ nhận được trong `log.tsv`. Nghe lại: nếu WAV rõ mà chữ sai là lỗi bộ
+  nhận dạng; nếu WAV nhỏ, rè, bị cắt là lỗi micro. Câu nói nhỏ được tự khuếch đại (tối đa 8 lần,
+  `normalize_audio`).
 - Câu bị cắt sớm: tăng `ptt_end_silence_ms` (vd. 2000) hoặc giảm `release_ratio` (mặc định 0,6:
   giữa câu, âm to hơn 60% ngưỡng vẫn tính là đang nói). Câu dài tối đa `max_utterance_s` = 10 s.
 - Giao diện chỉ hiển thị và gửi `/asr_listen`; vẫn cần `asr_node`, `intent_resolver_node`.
@@ -115,6 +119,8 @@ Tham số hay chỉnh (`--ros-args -p tên:=giá trị`):
 | | `ptt_end_silence_ms` | `1500` | Bấm-để-nói: im bao lâu thì coi là nói xong |
 | | `release_ratio` | `0.6` | Giữa câu, âm trên ngưỡng × hệ số này vẫn tính là đang nói |
 | | `max_utterance_s` | `10` | Câu dài nhất |
+| | `normalize_audio` | `true` | Khuếch đại câu nói nhỏ trước khi nhận dạng |
+| | `save_audio_dir` | `none` | Lưu từng câu ra WAV + `log.tsv` để nghe lại |
 | | `device_index` | `-1` | Chỉ số micro; xem `python3 -m sounddevice` |
 | | `min_rms` | `250` | Ngưỡng tiếng tối thiểu; ngưỡng thật tự theo tiếng ồn nền |
 | | `vosk_grammar` | `false` | Vosk chỉ nhận câu mẫu sinh từ `destinations.yaml` (xem dưới) |

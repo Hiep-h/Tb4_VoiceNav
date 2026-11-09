@@ -167,3 +167,20 @@ class EnergyVad:
         self._frames = []
         self._preroll.clear()
         return audio
+
+
+def normalize_peak(audio, target=0.7, max_gain=8.0):
+    """Scale a quiet utterance up so its peak is `target` of full scale.
+
+    Laptop microphones often record speech at a few percent of full scale;
+    recognisers do better on a normal level. Loud audio is left unchanged.
+    """
+    if len(audio) == 0:
+        return audio
+    peak = float(np.max(np.abs(audio.astype(np.int32))))
+    if peak <= 0:
+        return audio
+    gain = min(max_gain, target * 32767.0 / peak)
+    if gain <= 1.0:
+        return audio
+    return np.clip(np.rint(audio.astype(np.float64) * gain), -32768, 32767).astype(np.int16)

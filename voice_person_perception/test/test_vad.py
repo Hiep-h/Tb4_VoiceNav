@@ -117,3 +117,16 @@ def test_flush_ends_sentence_now():
     audio = vad.flush()
     assert audio is not None and len(audio) / 16000 >= 0.9
     assert not vad.in_speech and vad.flush() is None
+
+
+def test_normalize_peak():
+    import numpy as np
+    from voice_person_perception.vad import normalize_peak
+    quiet = _tone(0.5, 4000)
+    loud = normalize_peak(quiet)
+    assert abs(int(np.max(np.abs(loud))) - int(0.7 * 32767)) < 100
+    assert normalize_peak(_tone(0.5, 30000)) is not None
+    assert np.array_equal(normalize_peak(_tone(0.5, 30000)), _tone(0.5, 30000))
+    tiny = normalize_peak(_tone(0.5, 100))  # gain capped at 8x: noise is not blown up
+    assert int(np.max(np.abs(tiny))) <= 801
+    assert len(normalize_peak(np.zeros(0, dtype=np.int16))) == 0

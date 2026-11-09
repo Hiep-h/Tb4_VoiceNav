@@ -1,5 +1,6 @@
 """Microphone -> utterance segmentation -> speech-to-text -> /speech_text."""
 
+import os
 import queue
 import threading
 import time
@@ -13,7 +14,7 @@ from voice_person_perception import contract
 from voice_person_perception import vocab
 from voice_person_perception.asr_backends import FallbackBackend, make_backend
 from voice_person_perception.intent_resolver_node import _default_destinations_file
-from voice_person_perception.vad import EnergyVad, resample_to
+from voice_person_perception.vad import EnergyVad, normalize_peak, resample_to
 
 TARGET_RATE = 16000
 
@@ -35,6 +36,10 @@ class AsrNode(Node):
         self.declare_parameter('max_utterance_s', 10.0)
         # Inside a sentence, sound above threshold * release_ratio still counts as speech.
         self.declare_parameter('release_ratio', 0.6)
+        # Raise quiet sentences to a normal level before recognition.
+        self.declare_parameter('normalize_audio', True)
+        # Debug: save every sentence sent to the recogniser as WAV + a log line.
+        self.declare_parameter('save_audio_dir', 'none')
         # Bias recognition towards the command vocabulary (see vocab.py).
         self.declare_parameter('destinations_file', '')
         self.declare_parameter('vosk_grammar', False)
@@ -95,6 +100,14 @@ class AsrNode(Node):
         self._armed_at = None  # push-to-talk: monotonic time the button was pressed
         self._recognizing = False
         self._finish_now = False  # push-to-talk: second press ends the sentence
+        self._normalize = bool(get('normalize_audio'))
+        self._save_dir = get('save_audio_dir')
+        if self._save_dir in ('', 'none'):
+            self._save_dir = None
+        else:
+            self._save_dir = os.path.expanduser(self._save_dir)
+            os.makedirs(self._save_dir, exist_ok=True)
+            log.info(f'Lưu từng câu vào {self._save_dir} (nghe lại để kiểm tra mic)')
         self._names = (backend, fallback)
         self._capture_rate = TARGET_RATE
         self._stop = threading.Event()
@@ -221,26 +234,47 @@ class AsrNode(Node):
 
     def _recognize(self, utterance):
         started = time.monotonic()
+        audio_s = len(utterance) / TARGET_RATE
+        if self._normalize:
+            utterance = normalize_peak(utterance)
         self._recognizing = True
         try:
             result = self._backend.transcribe(utterance)
         except Exception as exc:  # keep listening after a bad utterance
             self.get_logger().error(f'Lỗi nhận dạng: {exc}')
+            self._save(utterance, f'LỖI: {exc}')
             return
         finally:
             self._recognizing = False
         if result:
             text, conf = result
-            engine = getattr(self._backend, 'last_engine', None)
-            self._out_q.put((text, conf, time.monotonic() - started, engine))
+            engine = getattr(self._backend, 'last_engine', None) or self._names[0]
+            self._out_q.put((text, conf, time.monotonic() - started, engine, audio_s))
+            self._save(utterance, text)
         else:
-            self.get_logger().info(
-                f'Không nghe ra chữ nào ({len(utterance) / TARGET_RATE:.1f} s âm thanh)')
+            self.get_logger().info(f'Không nghe ra chữ nào ({audio_s:.1f} s âm thanh)')
+            self._save(utterance, '(không ra chữ)')
+
+    def _save(self, audio, text):
+        if not self._save_dir:
+            return
+        try:
+            import wave
+            name = time.strftime('%H%M%S') + f'_{int(time.time() * 1000) % 1000:03d}.wav'
+            with wave.open(os.path.join(self._save_dir, name), 'wb') as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(TARGET_RATE)
+                w.writeframes(audio.astype('int16').tobytes())
+            with open(os.path.join(self._save_dir, 'log.tsv'), 'a', encoding='utf-8') as f:
+                f.write(f'{name}\t{len(audio) / TARGET_RATE:.1f}s\t{text}\n')
+        except OSError as exc:
+            self.get_logger().warn(f'Không lưu được âm thanh: {exc}')
 
     def _flush(self):
         while True:
             try:
-                text, conf, latency, engine = self._out_q.get_nowait()
+                text, conf, latency, engine, audio_s = self._out_q.get_nowait()
             except queue.Empty:
                 return
             stamp = self.get_clock().now().nanoseconds * 1e-9
@@ -248,7 +282,8 @@ class AsrNode(Node):
             self.get_logger().info(
                 f'Nghe được: "{text}" (conf {conf:.2f}, {latency:.2f}s{via})')
             msg = String()
-            msg.data = contract.dumps(contract.make_speech_text(stamp, text, conf, latency))
+            msg.data = contract.dumps(contract.make_speech_text(
+                stamp, text, conf, latency, engine=engine, audio_s=audio_s))
             self._pub.publish(msg)
 
     def destroy_node(self):

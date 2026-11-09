@@ -192,8 +192,14 @@ def render_voice_panel(view, t=0.0, height=PANEL_H):
         d.text((20, y), line, font=font(22, True), fill=BLUE)
         y += 28
     if heard and heard.get('latency_s') is not None:
-        d.text((20, y), f"nhận dạng {heard['latency_s']:.1f} s, độ tin cậy "
-               f"{heard.get('asr_conf', 0):.2f}", font=font(14), fill=GREY)
+        info = []
+        if heard.get('engine'):
+            info.append(heard['engine'])
+        if heard.get('audio_s') is not None:
+            info.append(f"câu dài {heard['audio_s']:.1f} s")
+        info.append(f"nhận dạng {heard['latency_s']:.1f} s")
+        info.append(f"tin cậy {heard.get('asr_conf', 0):.2f}")
+        d.text((20, y), ', '.join(info), font=font(14), fill=GREY)
         y += 20
     y += 8
     d.text((20, y), 'Robot hiểu:', font=font(17), fill=GREY)

@@ -28,6 +28,8 @@ def generate_launch_description():
                               description='Chỉ số micro (sounddevice); -1 = mặc định'),
         DeclareLaunchArgument('push_to_talk', default_value='false',
                               description='Chỉ nghe sau khi bấm nút (voice_gui / /asr_listen)'),
+        DeclareLaunchArgument('save_audio_dir', default_value='none',
+                              description='Lưu từng câu ra WAV để nghe lại; none = không'),
         DeclareLaunchArgument('gui', default_value='false',
                               description='Mở cửa sổ voice_gui'),
         DeclareLaunchArgument('map_yaml', default_value='none',
@@ -47,6 +49,7 @@ def generate_launch_description():
                  'whisper_prompt': LaunchConfiguration('whisper_prompt'),
                  'destinations_file': LaunchConfiguration('destinations_file'),
                  'push_to_talk': LaunchConfiguration('push_to_talk'),
+                 'save_audio_dir': LaunchConfiguration('save_audio_dir'),
              }]),
         Node(package='voice_person_perception', executable='intent_resolver_node',
              name='intent_resolver_node', output='screen', parameters=[{

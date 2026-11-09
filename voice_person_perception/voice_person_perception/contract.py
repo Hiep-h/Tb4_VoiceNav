@@ -29,14 +29,19 @@ def dumps(payload):
     return json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
 
 
-def make_speech_text(stamp, text, asr_conf, latency_s):
-    return {
+def make_speech_text(stamp, text, asr_conf, latency_s, engine=None, audio_s=None):
+    out = {
         'v': SCHEMA_VERSION,
         'stamp': round(stamp, 3),
         'text': text,
         'asr_conf': round(asr_conf, 3),
         'latency_s': round(latency_s, 3),
     }
+    if engine:
+        out['engine'] = engine        # which recogniser produced the text
+    if audio_s is not None:
+        out['audio_s'] = round(audio_s, 2)  # length of the sentence sent to it
+    return out
 
 
 def make_voice_command(seq, stamp, text, intent, destination, confidence,
