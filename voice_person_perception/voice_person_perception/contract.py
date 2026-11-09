@@ -59,14 +59,17 @@ def make_voice_command(seq, stamp, text, intent, destination, confidence,
     }
 
 
-def make_person(track_id, distance_m, bearing_deg, confidence, approaching):
-    return {
-        'id': track_id,
-        'distance_m': None if distance_m is None else round(distance_m, 2),
-        'bearing_deg': round(bearing_deg, 1) + 0.0,
-        'confidence': round(confidence, 2),
-        'approaching': approaching,
+def make_person(track_id, distance_m, bearing_deg, confidence, approaching, source=None):
+    out = {
+        'id': None if track_id is None else int(track_id),
+        'distance_m': None if distance_m is None else round(float(distance_m), 2),
+        'bearing_deg': round(float(bearing_deg), 1) + 0.0,
+        'confidence': round(float(confidence), 2),
+        'approaching': bool(approaching),
     }
+    if source:
+        out['source'] = source  # depth | height | width (rough, no depth camera)
+    return out
 
 
 def make_person_message(stamp, persons, healthy, frame_age_s):

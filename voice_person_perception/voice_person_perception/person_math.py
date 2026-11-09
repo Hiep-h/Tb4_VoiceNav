@@ -44,6 +44,28 @@ def depth_median_m(depth, bbox, scale=0.001, region_frac=0.4, min_m=0.2, max_m=8
     return float(np.median(valid)) if valid.size else None
 
 
+def size_distance_m(bbox, frame_shape, fx, person_height_m=1.7, shoulder_m=0.5,
+                    edge_frac=0.02, min_m=0.3, max_m=8.0):
+    """Rough distance from box size, for cameras without depth (laptop webcam).
+
+    Whole body visible: distance = fx * height / box height (fy ~ fx).
+    Feet cut off but head visible (close to the camera): use the shoulder
+    width instead. Head cut off: None. Returns (distance or None, source).
+    """
+    h, w = frame_shape[:2]
+    x1, y1, x2, y2 = bbox
+    edge = edge_frac * h
+    head_visible = y1 > edge
+    feet_visible = y2 < h - edge
+    if head_visible and feet_visible and y2 - y1 > 1:
+        dist, source = fx * person_height_m / (y2 - y1), 'height'
+    elif head_visible and x2 - x1 > 1:
+        dist, source = fx * shoulder_m / (x2 - x1), 'width'
+    else:
+        return None, None
+    return (float(dist), source) if min_m <= dist <= max_m else (None, None)
+
+
 class PersonSmoother:
     """Per-track smoothing and approach detection."""
 
@@ -74,7 +96,7 @@ class PersonSmoother:
         approaching = False
         if len(hist) >= 2 and hist[-1][0] - hist[0][0] >= 0.4:
             speed = (hist[-1][1] - hist[0][1]) / (hist[-1][0] - hist[0][0])
-            approaching = speed < -self.approach_speed
+            approaching = bool(speed < -self.approach_speed)
         return tr['d'], tr['b'], approaching
 
     def prune(self, now):

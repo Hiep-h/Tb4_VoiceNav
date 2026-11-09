@@ -29,6 +29,7 @@ voice_person_perception/            package ROS 2 (ament_python)
 │   ├── waypoint_marker.py          đánh dấu điểm đến trên map, ghi vào destinations.yaml
 │   ├── destination_markers.py      vẽ các điểm đến lên RViz, tự cập nhật khi file đổi
 │   ├── voice_gui.py, gui_render.py giao diện: nút nói, lệnh đã hiểu, bản đồ/radar người
+│   ├── webcam_node.py, person_draw.py  thử nhận diện người bằng webcam, ảnh debug có khung
 │   ├── eval_voice.py               đo độ chính xác + độ trễ giọng nói
 │   └── fake_voice_node.py, fake_person_node.py
 └── test/                           pytest, không cần ROS
@@ -147,6 +148,33 @@ Mặc định tắt cả hai, bật sau khi `eval_voice` cho thấy có lợi tr
 
 **Thêm bí danh theo lỗi nhận dạng:** sau khi đo, xem cột `heard` trong file kết quả. Từ nào ASR hay
 nghe nhầm cho một điểm đến (ví dụ "phòng khác" thay vì "phòng khách") thì thêm vào `aliases`.
+
+## Thử nhận diện người bằng webcam laptop (chưa cần robot)
+
+Dùng webcam thay OAK-D để thử YOLO, theo dõi người, hướng và "đang tiến lại" trước khi lên robot.
+
+```bash
+sudo apt install ros-humble-rqt-image-view     # nếu chưa có (xem ảnh có khung người)
+ros2 launch voice_person_perception webcam_person.launch.py            # device:=1 nếu có 2 camera
+ros2 topic echo /person_detections                                       # terminal khác
+```
+
+Mở ra 2 cửa sổ: ảnh webcam có khung người (`rqt_image_view`, topic `/person_detections/image`) và
+`voice_gui` với radar người. Nhãn trên khung: `#3 1.2m~ L15 <-` = người số 3, cách ~1,2 m, lệch
+trái 15°, đang tiến lại; khung xanh lá xa hơn 2 m, cam 1-2 m, đỏ dưới 1 m hoặc đang tiến lại.
+
+Thử lần lượt:
+1. Ngồi trước laptop, rồi nghiêng người lại gần/ra xa: `distance_m` giảm/tăng, tiến lại nhanh thì
+   `approaching: true`.
+2. Đứng xa 2-3 m (thấy cả người) và đi sang trái/phải: `bearing_deg` dương khi người ở **bên trái
+   camera** (bên phải của người đang nhìn vào camera).
+3. Hai người cùng lúc: mỗi người giữ một `id` riêng khi di chuyển.
+4. Đi ra khỏi khung hình: danh sách `persons` rỗng nhưng tin vẫn ra đều 10 Hz.
+
+**Giới hạn:** webcam không có ảnh độ sâu nên khoảng cách chỉ là **ước lượng** từ kích thước khung
+(`source: height` khi thấy cả người, giả sử cao 1,7 m; `source: width` khi chỉ thấy nửa trên, giả
+sử vai rộng 0,5 m), sai số có thể 30-50%. Số đo cho báo cáo phải lấy bằng OAK-D trên robot
+(`source: depth`). Lần đầu chạy, `ultralytics` tự tải `yolov8n.pt` (~6 MB).
 
 ## Từ vẽ map đến lúc robot đi (làm theo thứ tự)
 

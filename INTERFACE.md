@@ -76,6 +76,7 @@ Quy ước:
 | `distance_m` | Khoảng cách tới người (m); `null` nếu chưa có độ sâu hợp lệ |
 | `bearing_deg` | **Dương = người ở bên TRÁI robot**, âm = bên phải (cùng chiều quay yaw của ROS); 0 = chính giữa |
 | `approaching` | `true` nếu người đang lại gần (> 0,2 m/s) |
+| `source` | (tùy chọn) cách đo khoảng cách: `depth` (OAK-D), `height`/`width` (ước lượng từ khung, chỉ khi thử bằng webcam) |
 
 Quy ước:
 - Phát **đều 10 Hz kể cả khi không có ai**, nên bên thực thi dùng nó làm watchdog được:

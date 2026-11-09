@@ -93,3 +93,53 @@ def test_contract_roundtrip_is_valid_json_with_vietnamese():
                                        True, 0.0312)
     back = json.loads(contract.dumps(msg))
     assert back['persons'][0]['distance_m'] is None and back['persons'][0]['bearing_deg'] == 3.1
+
+
+def test_size_distance_full_body_and_close_up():
+    from voice_person_perception.person_math import size_distance_m
+    fx, shape = 500.0, (480, 640, 3)
+    # whole body 340 px tall -> 500 * 1.7 / 340 = 2.5 m
+    d, src = size_distance_m((300, 60, 380, 400), shape, fx)
+    assert src == 'height' and abs(d - 2.5) < 1e-6
+    # sitting at the laptop: feet cut off, shoulders 250 px wide -> 500 * 0.5 / 250 = 1.0 m
+    d, src = size_distance_m((200, 80, 450, 480), shape, fx)
+    assert src == 'width' and abs(d - 1.0) < 1e-6
+    # head cut off: no estimate
+    assert size_distance_m((200, 0, 450, 480), shape, fx) == (None, None)
+    # implausible (tiny box -> 40 m) rejected
+    assert size_distance_m((300, 100, 302, 121), shape, fx) == (None, None)
+
+
+def test_debug_drawing_and_labels():
+    import numpy as np
+    from voice_person_perception.person_draw import draw_persons, person_label
+    p = {'id': 3, 'distance_m': 1.2, 'bearing_deg': 15.0, 'approaching': True,
+         'source': 'width'}
+    assert person_label(p) == '#3 1.2m~ L15 <-'
+    assert person_label({'id': None, 'distance_m': None, 'bearing_deg': -1.0}) == '#? ?m C'
+    frame = np.zeros((240, 320, 3), np.uint8)
+    out = draw_persons(frame, [(10, 20, 100, 200)], [p])
+    assert out.shape == frame.shape and out.any() and not frame.any()
+
+
+def test_numpy_image_round_trip():
+    import numpy as np
+    pytest = __import__('pytest')
+    msg_mod = pytest.importorskip('sensor_msgs.msg')  # needs ROS
+    from voice_person_perception.ros_image import image_to_numpy, numpy_to_image
+    arr = np.random.default_rng(0).integers(0, 255, (4, 5, 3), dtype=np.uint8)
+    assert isinstance(numpy_to_image(arr), msg_mod.Image)
+    assert np.array_equal(image_to_numpy(numpy_to_image(arr)), arr)
+
+
+def test_person_message_is_json_with_numpy_inputs():
+    import json
+
+    import numpy as np
+    from voice_person_perception import contract
+    p = contract.make_person(np.int64(2), np.float64(1.234), np.float32(-12.34),
+                             np.float32(0.876), np.bool_(True), 'width')
+    text = contract.dumps(contract.make_person_message(1.0, [p], True, 0.1))
+    assert json.loads(text)['persons'][0] == {'id': 2, 'distance_m': 1.23, 'bearing_deg': -12.3,
+                                              'confidence': 0.88, 'approaching': True,
+                                              'source': 'width'}

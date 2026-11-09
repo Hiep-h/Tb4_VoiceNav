@@ -33,6 +33,7 @@ setup(
             'destination_markers = voice_person_perception.destination_markers:main',
             'nav_goal_cmd = voice_person_perception.waypoints:goal_main',
             'voice_gui = voice_person_perception.voice_gui:main',
+            'webcam_node = voice_person_perception.webcam_node:main',
         ],
     },
 )

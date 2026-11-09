@@ -23,3 +23,19 @@ def image_to_numpy(msg):
     if msg.encoding == 'rgb8':
         arr = arr[:, :, ::-1].copy()
     return arr
+
+
+def numpy_to_image(arr, encoding='bgr8', frame_id='', stamp=None):
+    """Build a sensor_msgs/Image from a uint8 HxWx3 (bgr8) or HxW (mono8) array."""
+    from sensor_msgs.msg import Image
+    arr = np.ascontiguousarray(arr)
+    msg = Image()
+    if stamp is not None:
+        msg.header.stamp = stamp
+    msg.header.frame_id = frame_id
+    msg.height, msg.width = int(arr.shape[0]), int(arr.shape[1])
+    msg.encoding = encoding
+    msg.is_bigendian = 0
+    msg.step = int(arr.strides[0])
+    msg.data = arr.tobytes()
+    return msg

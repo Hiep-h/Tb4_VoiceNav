@@ -1,4 +1,9 @@
-"""OAK-D RGB + depth -> /person_detections (distance and bearing of each person)."""
+"""OAK-D RGB + depth -> /person_detections (distance and bearing of each person).
+
+Without a depth camera (laptop webcam: depth_topic:=none) the distance is a
+rough estimate from the box size (size_fallback). debug_image publishes the
+camera image with boxes, distance and bearing on /person_detections/image.
+"""
 
 import time
 
@@ -15,8 +20,9 @@ from voice_person_perception.person_math import (
     depth_median_m,
     fx_from_hfov,
     scale_bbox,
+    size_distance_m,
 )
-from voice_person_perception.ros_image import image_to_numpy
+from voice_person_perception.ros_image import image_to_numpy, numpy_to_image
 
 
 class PersonDetectorNode(Node):
@@ -40,6 +46,9 @@ class PersonDetectorNode(Node):
         self.declare_parameter('result_ttl_s', 0.5)
         self.declare_parameter('stale_after_s', 1.0)
         self.declare_parameter('approach_speed', 0.2)
+        self.declare_parameter('size_fallback', True)
+        self.declare_parameter('person_height_m', 1.7)
+        self.declare_parameter('debug_image', False)
 
         get = lambda name: self.get_parameter(name).value  # noqa: E731
         try:
@@ -61,8 +70,14 @@ class PersonDetectorNode(Node):
 
         self.create_subscription(Image, get('image_topic'), self._on_image,
                                  qos_profile_sensor_data)
-        self.create_subscription(Image, get('depth_topic'), self._on_depth,
-                                 qos_profile_sensor_data)
+        if get('depth_topic') not in ('', 'none'):
+            self.create_subscription(Image, get('depth_topic'), self._on_depth,
+                                     qos_profile_sensor_data)
+        else:
+            self.get_logger().info('Không có depth: khoảng cách ước lượng theo kích thước '
+                                   'khung người (chỉ để thử, sai số lớn)')
+        self._debug_pub = (self.create_publisher(Image, contract.PERSON_TOPIC + '/image', 2)
+                           if get('debug_image') else None)
         self.create_subscription(CameraInfo, get('camera_info_topic'), self._on_info,
                                  qos_profile_sensor_data)
         self._pub = self.create_publisher(String, contract.PERSON_TOPIC, 10)
@@ -95,10 +110,10 @@ class PersonDetectorNode(Node):
         except ValueError as exc:
             self.get_logger().warn(str(exc), throttle_duration_sec=10.0)
             return
-        self._persons = self._detect(frame)
+        self._persons = self._detect(frame, msg.header)
         self._persons_rx = time.monotonic()
 
-    def _detect(self, frame):
+    def _detect(self, frame, header=None):
         get = lambda name: self.get_parameter(name).value  # noqa: E731
         kwargs = dict(classes=[0], conf=float(get('conf')), imgsz=int(get('imgsz')),
                       verbose=False)
@@ -111,6 +126,7 @@ class PersonDetectorNode(Node):
 
         boxes = result.boxes
         if boxes is None or len(boxes) == 0:
+            self._publish_debug(frame, [], [], header)
             return []
         xyxy = boxes.xyxy.cpu().numpy()
         confs = boxes.conf.cpu().numpy()
@@ -126,24 +142,41 @@ class PersonDetectorNode(Node):
                        and time.monotonic() - self._depth_rx < float(get('stale_after_s')))
         now = self.get_clock().now().nanoseconds * 1e-9
 
-        persons = []
+        persons, drawn = [], []
         for box, conf, track_id in zip(xyxy, confs, ids):
             bearing = bearing_deg((box[0] + box[2]) / 2.0, width / 2.0, fx)
-            distance = None
+            distance, source = None, None
             if depth_fresh:
                 distance = depth_median_m(
                     self._depth, scale_bbox(box, (height, width), self._depth.shape[:2]),
                     self._depth_scale, min_m=float(get('min_depth_m')),
                     max_m=float(get('max_depth_m')))
+                source = 'depth' if distance is not None else None
+            elif get('size_fallback'):
+                distance, source = size_distance_m(
+                    box, frame.shape, fx, person_height_m=float(get('person_height_m')))
             approaching = False
             if track_id is not None:
                 distance, bearing, approaching = self._smoother.update(
                     track_id, now, distance, bearing)
-            persons.append(contract.make_person(track_id, distance, bearing, float(conf),
-                                                approaching))
+            person = contract.make_person(track_id, distance, bearing, float(conf),
+                                          approaching, source)
+            persons.append(person)
+            drawn.append(box)
         self._smoother.prune(now)
-        persons.sort(key=lambda p: (p['distance_m'] is None, p['distance_m'] or 0.0))
-        return persons
+        self._publish_debug(frame, drawn, persons, header)
+        order = sorted(range(len(persons)), key=lambda i: (
+            persons[i]['distance_m'] is None, persons[i]['distance_m'] or 0.0))
+        return [persons[i] for i in order]
+
+    def _publish_debug(self, frame, boxes, persons, header):
+        if self._debug_pub is None:
+            return
+        from voice_person_perception.person_draw import draw_persons
+        image = draw_persons(frame, boxes, persons)
+        msg = numpy_to_image(image, 'bgr8', header.frame_id if header else '',
+                             header.stamp if header else None)
+        self._debug_pub.publish(msg)
 
     def _publish(self):
         now_mono = time.monotonic()
