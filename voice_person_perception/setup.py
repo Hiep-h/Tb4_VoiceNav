@@ -34,6 +34,7 @@ setup(
             'nav_goal_cmd = voice_person_perception.waypoints:goal_main',
             'voice_gui = voice_person_perception.voice_gui:main',
             'webcam_node = voice_person_perception.webcam_node:main',
+            'camera_check = voice_person_perception.camera_check:main',
         ],
     },
 )

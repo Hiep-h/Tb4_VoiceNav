@@ -30,7 +30,8 @@ class PersonDetectorNode(Node):
     def __init__(self):
         super().__init__('person_detector_node')
         self.declare_parameter('image_topic', '/oakd/rgb/preview/image_raw')
-        self.declare_parameter('depth_topic', '/oakd/rgb/preview/depth')
+        # Defaults are a guess: run camera_check on the robot and pass the topics it prints.
+        self.declare_parameter('depth_topic', '/oakd/stereo/image_raw')
         self.declare_parameter('camera_info_topic', '/oakd/rgb/preview/camera_info')
         self.declare_parameter('model', 'yolov8n.pt')
         self.declare_parameter('device', '')

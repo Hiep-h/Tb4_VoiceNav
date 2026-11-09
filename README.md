@@ -30,6 +30,7 @@ voice_person_perception/            package ROS 2 (ament_python)
 │   ├── destination_markers.py      vẽ các điểm đến lên RViz, tự cập nhật khi file đổi
 │   ├── voice_gui.py, gui_render.py giao diện: nút nói, lệnh đã hiểu, bản đồ/radar người
 │   ├── webcam_node.py, person_draw.py  thử nhận diện người bằng webcam, ảnh debug có khung
+│   ├── camera_check.py             kiểm tra topic, depth, căn chỉnh của camera robot
 │   ├── eval_voice.py               đo độ chính xác + độ trễ giọng nói
 │   └── fake_voice_node.py, fake_person_node.py
 └── test/                           pytest, không cần ROS
@@ -129,7 +130,7 @@ Tham số hay chỉnh (`--ros-args -p tên:=giá trị`):
 | | `whisper_prompt` | `false` | Gợi ý tên điểm đến cho Whisper (`initial_prompt`) |
 | `intent_resolver_node` | `confident` | `0.97` | Điểm khớp tối thiểu để không hỏi lại |
 | | `accept` | `0.75` | Dưới mức này coi là `UNKNOWN` |
-| `person_detector_node` | `image_topic`, `depth_topic`, `camera_info_topic` | `/oakd/rgb/preview/...` | Topic camera; **xác nhận bằng `ros2 topic list` trên robot** |
+| `person_detector_node` | `image_topic`, `depth_topic`, `camera_info_topic` | `/oakd/rgb/preview/image_raw`, `/oakd/stereo/image_raw`, `/oakd/rgb/preview/camera_info` | Topic camera; **lấy theo `camera_check` trên robot** |
 | | `hfov_deg` | `69` | Góc nhìn ngang dùng khi không có `camera_info` |
 | | `infer_rate_hz`, `imgsz` | `5`, `320` | Giảm nếu CPU yếu |
 
@@ -175,6 +176,37 @@ Thử lần lượt:
 (`source: height` khi thấy cả người, giả sử cao 1,7 m; `source: width` khi chỉ thấy nửa trên, giả
 sử vai rộng 0,5 m), sai số có thể 30-50%. Số đo cho báo cáo phải lấy bằng OAK-D trên robot
 (`source: depth`). Lần đầu chạy, `ultralytics` tự tải `yolov8n.pt` (~6 MB).
+
+## Kiểm tra camera trên robot (`camera_check`)
+
+Làm trước khi chạy nhận diện người với OAK-D thật. Bật robot, laptop cùng `ROS_DOMAIN_ID`, rồi:
+
+```bash
+ros2 run voice_person_perception camera_check
+```
+
+Công cụ tự tìm topic ảnh màu, ảnh độ sâu, `camera_info`, nghe 5 s rồi in encoding, kích thước, tần
+số và các lỗi thường gặp:
+
+| Báo | Nghĩa | Cách sửa |
+|---|---|---|
+| Không có ảnh độ sâu | Cấu hình OAK-D của TB4 chỉ phát ảnh màu | Bật `stereo: i_publish_topic: true`, `i_align_depth: true` trong file cấu hình camera rồi chạy lại camera |
+| Ảnh màu và depth khác tỉ lệ | Thường do dùng ảnh `preview` (vuông) với depth 16:9 | Dùng `/oakd/rgb/image_raw` (công cụ tự chọn nếu có) |
+| Quá chậm (< 4 Hz) | Ảnh chưa nén qua wifi | Chạy node nhận diện trên robot, hoặc giảm độ phân giải |
+| Encoding không hỗ trợ | Depth không phải `16UC1`/`32FC1` | Xem cấu hình camera |
+
+Sau đó công cụ in **lệnh chạy `person_detector_node` với đúng topic**, và in liên tục độ sâu ở giữa
+ảnh: hướng camera vào tường hoặc một người, đo bằng thước, so hai số (lệch vài cm là ổn). Truyền
+các topic đó vào launch:
+
+```bash
+ros2 launch voice_person_perception perception.launch.py image_topic:=/oakd/rgb/image_raw \
+    depth_topic:=/oakd/stereo/image_raw camera_info_topic:=/oakd/rgb/camera_info
+```
+
+Kiểm tra cuối: chạy lệnh `person_detector_node` công cụ in ra (có `debug_image:=true`), mở
+`ros2 run rqt_image_view rqt_image_view /person_detections/image`, cho người đứng ở 0,5 / 1 / 2 m.
+Nhãn khoảng cách **không có dấu `~`** nghĩa là đang đo bằng depth (`source: depth`).
 
 ## Từ vẽ map đến lúc robot đi (làm theo thứ tự)
 

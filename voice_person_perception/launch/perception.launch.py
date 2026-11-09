@@ -36,6 +36,12 @@ def generate_launch_description():
                               description='Bản đồ cho voice_gui (map_saver .yaml); none = radar'),
         DeclareLaunchArgument('person', default_value='true',
                               description='Chạy person_detector_node (cần camera OAK-D)'),
+        DeclareLaunchArgument('image_topic', default_value='/oakd/rgb/preview/image_raw',
+                              description='Ảnh màu (lấy theo camera_check)'),
+        DeclareLaunchArgument('depth_topic', default_value='/oakd/stereo/image_raw',
+                              description='Ảnh độ sâu (lấy theo camera_check); none = không có'),
+        DeclareLaunchArgument('camera_info_topic', default_value='/oakd/rgb/preview/camera_info',
+                              description='camera_info của ảnh màu'),
     ]
     return LaunchDescription(args + [
         Node(package='voice_person_perception', executable='asr_node', name='asr_node',
@@ -57,7 +63,12 @@ def generate_launch_description():
              }]),
         Node(package='voice_person_perception', executable='person_detector_node',
              name='person_detector_node', output='screen',
-             condition=IfCondition(LaunchConfiguration('person'))),
+             condition=IfCondition(LaunchConfiguration('person')),
+             parameters=[{
+                 'image_topic': LaunchConfiguration('image_topic'),
+                 'depth_topic': LaunchConfiguration('depth_topic'),
+                 'camera_info_topic': LaunchConfiguration('camera_info_topic'),
+             }]),
         Node(package='voice_person_perception', executable='voice_gui', name='voice_gui',
              output='screen', condition=IfCondition(LaunchConfiguration('gui')),
              parameters=[{
