@@ -78,7 +78,7 @@ BUTTON_LOOK = {
     # state: (button colour, line under the button, colour of that line)
     contract.ASR_IDLE: ((140, 140, 140), 'Bấm để nói', DARK),
     contract.ASR_LISTENING: (RED, 'Đang nghe... hãy nói', RED),
-    contract.ASR_SPEECH: (RED, 'Đang nghe bạn nói...', RED),
+    contract.ASR_SPEECH: (RED, 'Đang nghe... bấm lần nữa để gửi', RED),
     contract.ASR_RECOGNIZING: (AMBER, 'Đang nhận dạng...', AMBER),
     contract.ASR_CALIBRATING: ((150, 150, 150), 'Giữ im lặng, đang đo tiếng ồn', GREY),
     contract.ASR_MUTED: ((90, 90, 90), 'Mic tạm tắt (robot đang nói)', GREY),

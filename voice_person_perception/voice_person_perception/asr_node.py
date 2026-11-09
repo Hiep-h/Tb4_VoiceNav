@@ -32,6 +32,9 @@ class AsrNode(Node):
         self.declare_parameter('device_index', -1)
         self.declare_parameter('min_rms', 250.0)
         self.declare_parameter('end_silence_ms', 700)
+        self.declare_parameter('max_utterance_s', 10.0)
+        # Inside a sentence, sound above threshold * release_ratio still counts as speech.
+        self.declare_parameter('release_ratio', 0.6)
         # Bias recognition towards the command vocabulary (see vocab.py).
         self.declare_parameter('destinations_file', '')
         self.declare_parameter('vosk_grammar', False)
@@ -40,6 +43,9 @@ class AsrNode(Node):
         # sentence at a time; give up after ptt_timeout_s without speech.
         self.declare_parameter('push_to_talk', False)
         self.declare_parameter('ptt_timeout_s', 8.0)
+        # With push_to_talk the user may pause longer (the button press says a
+        # sentence is coming); pressing again sends the sentence at once.
+        self.declare_parameter('ptt_end_silence_ms', 1500)
 
         get = lambda name: self.get_parameter(name).value  # noqa: E731
         path = (get('destinations_file') if get('destinations_file') not in ('', 'auto')
@@ -74,8 +80,12 @@ class AsrNode(Node):
         if isinstance(self._backend, FallbackBackend):
             log.info(f'Đang tải/nạp {fallback} dự phòng ở nền (lần đầu có thể vài phút); '
                      f'{backend} dùng được ngay')
+        end_silence = int(get('ptt_end_silence_ms') if get('push_to_talk')
+                          else get('end_silence_ms'))
         self._vad = EnergyVad(TARGET_RATE, min_rms=float(get('min_rms')),
-                              end_silence_ms=int(get('end_silence_ms')))
+                              end_silence_ms=end_silence,
+                              max_utterance_s=float(get('max_utterance_s')),
+                              release_ratio=float(get('release_ratio')))
 
         self._audio_q = queue.Queue(maxsize=300)
         self._out_q = queue.Queue()
@@ -84,6 +94,7 @@ class AsrNode(Node):
         self._ptt_timeout = float(get('ptt_timeout_s'))
         self._armed_at = None  # push-to-talk: monotonic time the button was pressed
         self._recognizing = False
+        self._finish_now = False  # push-to-talk: second press ends the sentence
         self._names = (backend, fallback)
         self._capture_rate = TARGET_RATE
         self._stop = threading.Event()
@@ -141,6 +152,8 @@ class AsrNode(Node):
             self._armed_at = time.monotonic()
             if not self._ptt:
                 self._muted = False  # always-on mode: the button simply unmutes
+        elif self._ptt and self._armed_at is not None and self._vad.in_speech:
+            self._finish_now = True  # second press while talking: send what was said
         else:
             self._armed_at = None
             if not self._ptt:
@@ -184,8 +197,14 @@ class AsrNode(Node):
 
     def _work(self):
         while not self._stop.is_set():
+            if self._finish_now:
+                self._finish_now = False
+                utterance = self._vad.flush()
+                self._armed_at = None
+                if utterance is not None:
+                    self._recognize(utterance)
             try:
-                chunk = self._audio_q.get(timeout=0.2)
+                chunk = self._audio_q.get(timeout=0.1)
             except queue.Empty:
                 continue
             chunk = resample_to(chunk, self._capture_rate, TARGET_RATE)
@@ -198,21 +217,25 @@ class AsrNode(Node):
             for utterance in self._vad.feed(chunk):
                 if self._ptt:
                     self._armed_at = None  # one sentence per button press
-                started = time.monotonic()
-                self._recognizing = True
-                try:
-                    result = self._backend.transcribe(utterance)
-                except Exception as exc:  # keep listening after a bad utterance
-                    self.get_logger().error(f'Lỗi nhận dạng: {exc}')
-                    continue
-                finally:
-                    self._recognizing = False
-                if result:
-                    text, conf = result
-                    engine = getattr(self._backend, 'last_engine', None)
-                    self._out_q.put((text, conf, time.monotonic() - started, engine))
-                else:
-                    self.get_logger().info('Không nghe ra chữ nào')
+                self._recognize(utterance)
+
+    def _recognize(self, utterance):
+        started = time.monotonic()
+        self._recognizing = True
+        try:
+            result = self._backend.transcribe(utterance)
+        except Exception as exc:  # keep listening after a bad utterance
+            self.get_logger().error(f'Lỗi nhận dạng: {exc}')
+            return
+        finally:
+            self._recognizing = False
+        if result:
+            text, conf = result
+            engine = getattr(self._backend, 'last_engine', None)
+            self._out_q.put((text, conf, time.monotonic() - started, engine))
+        else:
+            self.get_logger().info(
+                f'Không nghe ra chữ nào ({len(utterance) / TARGET_RATE:.1f} s âm thanh)')
 
     def _flush(self):
         while True:

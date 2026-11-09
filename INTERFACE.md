@@ -102,7 +102,7 @@ không nghe lại chính robot.
 Bên thực thi có thể dùng `speech`/`recognizing` để biết người dùng đang ra lệnh.
 
 `/asr_listen`: `true` = nghe một câu rồi tự dừng (khi `asr_node` chạy `push_to_talk:=true`), tự hủy
-nếu 8 s không ai nói; `false` = hủy. Không có `push_to_talk` thì `true`/`false` là bật/tắt micro.
+nếu 8 s không ai nói; `false` = gửi ngay câu đang nói, hoặc hủy nếu chưa nói gì. Không có `push_to_talk` thì `true`/`false` là bật/tắt micro.
 `/asr_mute` của bên thực thi vẫn ưu tiên hơn.
 
 ## Phát lại từ rosbag

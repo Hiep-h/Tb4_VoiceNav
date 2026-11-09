@@ -82,3 +82,38 @@ def test_clear_keeps_noise_floor_and_observe_noise_calibrates():
     assert vad.in_speech
     vad.clear()
     assert not vad.in_speech and vad.threshold == floor
+
+
+def _tone(seconds, amp, rate=16000):
+    import numpy as np
+    t = np.arange(int(seconds * rate)) / rate
+    return (amp * np.sin(2 * np.pi * 300 * t)).astype(np.int16)
+
+
+def _quiet(seconds, rate=16000, seed=1):
+    import numpy as np
+    return np.random.default_rng(seed).normal(0, 60, int(seconds * rate)).astype(np.int16)
+
+
+def test_soft_syllables_and_pauses_do_not_split_a_sentence():
+    import numpy as np
+    from voice_person_perception.vad import EnergyVad
+    # loud word, soft word (between release and start threshold), 1 s pause, loud word
+    audio = np.concatenate([_quiet(1.0), _tone(0.6, 4000), _tone(0.6, 350), _quiet(1.0),
+                            _tone(0.6, 4000), _quiet(2.0)])
+    old = EnergyVad(16000, end_silence_ms=700)
+    new = EnergyVad(16000, end_silence_ms=1500, release_ratio=0.6)
+    assert len(old.feed(audio)) == 2  # the old setting cut the sentence in two
+    parts = new.feed(audio)
+    assert len(parts) == 1 and len(parts[0]) / 16000 > 2.5
+
+
+def test_flush_ends_sentence_now():
+    import numpy as np
+    from voice_person_perception.vad import EnergyVad
+    vad = EnergyVad(16000, end_silence_ms=1500)
+    assert vad.feed(np.concatenate([_quiet(1.0), _tone(1.0, 4000)])) == []
+    assert vad.in_speech
+    audio = vad.flush()
+    assert audio is not None and len(audio) / 16000 >= 0.9
+    assert not vad.in_speech and vad.flush() is None

@@ -95,8 +95,12 @@ ros2 launch voice_person_perception fake.launch.py gui:=true
   tóm tắt người phía trước, bộ nhận dạng đang dùng.
 - **Phải:** có `map_yaml` thì là bản đồ với điểm đến (xanh lá: đang tới), robot và người (cần
   SLAM/AMCL để có vị trí robot); không có thì là radar người quanh robot (0,5 / 1 / 2 / 3 m).
-- Bấm nút hoặc phím **Space** để nói một câu (bấm lần nữa để hủy), **Q** để đóng. Không có
-  `push_to_talk:=true` thì micro nghe liên tục và nút dùng để tắt/bật micro.
+- Bấm nút hoặc phím **Space** rồi nói một câu. Câu kết thúc khi im 1,5 s (`ptt_end_silence_ms`),
+  hoặc **bấm lần nữa để gửi ngay**; bấm lại khi chưa nói gì là hủy. **Q** để đóng. Không có
+  `push_to_talk:=true` thì micro nghe liên tục (câu kết thúc khi im 0,7 s, `end_silence_ms`) và
+  nút dùng để tắt/bật micro.
+- Câu bị cắt sớm: tăng `ptt_end_silence_ms` (vd. 2000) hoặc giảm `release_ratio` (mặc định 0,6:
+  giữa câu, âm to hơn 60% ngưỡng vẫn tính là đang nói). Câu dài tối đa `max_utterance_s` = 10 s.
 - Giao diện chỉ hiển thị và gửi `/asr_listen`; vẫn cần `asr_node`, `intent_resolver_node`.
 
 Tham số hay chỉnh (`--ros-args -p tên:=giá trị`):
@@ -108,6 +112,9 @@ Tham số hay chỉnh (`--ros-args -p tên:=giá trị`):
 | | `whisper_model` | `small` | Cỡ model hoặc thư mục model CTranslate2 (PhoWhisper) |
 | | `model_path` | `none` | Thư mục model Vosk (khi dùng Vosk) |
 | | `push_to_talk` | `false` | Chỉ nghe một câu sau mỗi lần bấm nút (`voice_gui`, `/asr_listen`) |
+| | `ptt_end_silence_ms` | `1500` | Bấm-để-nói: im bao lâu thì coi là nói xong |
+| | `release_ratio` | `0.6` | Giữa câu, âm trên ngưỡng × hệ số này vẫn tính là đang nói |
+| | `max_utterance_s` | `10` | Câu dài nhất |
 | | `device_index` | `-1` | Chỉ số micro; xem `python3 -m sounddevice` |
 | | `min_rms` | `250` | Ngưỡng tiếng tối thiểu; ngưỡng thật tự theo tiếng ồn nền |
 | | `vosk_grammar` | `false` | Vosk chỉ nhận câu mẫu sinh từ `destinations.yaml` (xem dưới) |
