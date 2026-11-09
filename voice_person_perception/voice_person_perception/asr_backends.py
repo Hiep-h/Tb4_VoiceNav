@@ -144,18 +144,52 @@ class GoogleBackend:
         return pick_alternative(alternatives, self._hints)
 
 
+class BackupNotReady(RuntimeError):
+    """The primary engine failed and the backup is still loading or failed to load."""
+
+
 class FallbackBackend:
     """Use the primary engine; if it raises, transcribe with the backup instead.
 
-    `last_engine` tells which one produced the last result.
+    `backup` is an engine, or a callable that builds one. A callable is run in a
+    background thread (Whisper downloads ~500 MB on first use), so the primary
+    engine works at once; until the backup is ready a primary failure raises
+    BackupNotReady. `last_engine` tells which one produced the last result.
     """
 
     def __init__(self, primary, backup, primary_name='primary', backup_name='backup',
-                 on_fallback=None):
-        self._primary, self._backup = primary, backup
+                 on_fallback=None, on_backup_ready=None):
+        self._primary = primary
         self._names = (primary_name, backup_name)
         self._on_fallback = on_fallback
+        self._on_backup_ready = on_backup_ready
         self.last_engine = primary_name
+        self._backup = None
+        self._backup_error = None
+        self._loader = None
+        if callable(backup) and not hasattr(backup, 'transcribe'):
+            import threading
+            self._loader = threading.Thread(target=self._load, args=(backup,), daemon=True)
+            self._loader.start()
+        else:
+            self._backup = backup
+
+    def _load(self, factory):
+        try:
+            self._backup = factory()
+        except Exception as exc:  # noqa: BLE001 - reported when the backup is needed
+            self._backup_error = exc
+        if self._on_backup_ready:
+            self._on_backup_ready(self._backup_error)
+
+    @property
+    def backup_ready(self):
+        return self._backup is not None
+
+    def wait_backup(self, timeout=None):
+        if self._loader:
+            self._loader.join(timeout)
+        return self.backup_ready
 
     def transcribe(self, audio):
         try:
@@ -165,15 +199,23 @@ class FallbackBackend:
         except Exception as exc:
             if self._on_fallback:
                 self._on_fallback(exc)
+            if self._backup is None:
+                why = (f'nạp lỗi: {self._backup_error}' if self._backup_error
+                       else 'đang tải/nạp')
+                raise BackupNotReady(
+                    f'{self._names[0]} lỗi ({exc}); {self._names[1]} chưa sẵn sàng ({why})'
+                ) from exc
             self.last_engine = self._names[1]
             return self._backup.transcribe(audio)
 
 
 def make_backend(name, model_path='', whisper_model='small', language='vi',
                  sample_rate=16000, grammar=None, prompt=None, hints=(),
-                 fallback=''):
+                 fallback='', lazy_fallback=False, on_fallback=None,
+                 on_backup_ready=None):
     """name: vosk | whisper | google. fallback: '' / 'none' or another backend name,
-    used only when `name` raises (for example Google without network)."""
+    used only when `name` raises (for example Google without network).
+    lazy_fallback: load the fallback in a background thread."""
     if name == 'vosk':
         if not model_path:
             raise RuntimeError('Backend vosk cần tham số model_path')
@@ -186,6 +228,11 @@ def make_backend(name, model_path='', whisper_model='small', language='vi',
         raise RuntimeError(f'Backend không hợp lệ: {name}')
     if not fallback or fallback in ('none', name):
         return backend
-    backup = make_backend(fallback, model_path, whisper_model, language, sample_rate,
-                          grammar, prompt, hints)
-    return FallbackBackend(backend, backup, name, fallback)
+
+    def build_backup():
+        return make_backend(fallback, model_path, whisper_model, language, sample_rate,
+                            grammar, prompt, hints)
+
+    backup = build_backup if lazy_fallback else build_backup()
+    return FallbackBackend(backend, backup, name, fallback, on_fallback=on_fallback,
+                           on_backup_ready=on_backup_ready)

@@ -52,7 +52,10 @@ Nhận dạng giọng nói: mặc định **Google** (cần Internet), **Whisper
   trong `destinations.yaml`, không có thì lấy phương án đầu.
 - **Whisper dự phòng** (`fallback:=whisper`): chỉ chạy khi Google báo lỗi (mất mạng, hết hạn mức,
   quá 5 s), và chỉ cho câu đó. Google nghe không ra chữ thì KHÔNG chuyển, để tránh tốn thời gian.
-  Model Whisper nạp sẵn lúc khởi động (`faster-whisper` tự tải lần đầu), nên chạy trên laptop.
+  Model Whisper được tải và nạp ở nền (lần đầu khoảng 500 MB), Google dùng được ngay; log báo
+  `whisper dự phòng đã sẵn sàng` khi xong. Nên tải trước một lần, có thanh tiến độ:
+  `python3 -c "from faster_whisper import WhisperModel; WhisperModel('small', compute_type='int8')"`.
+  Chạy trên laptop.
   Có thể trỏ `whisper_model:=` tới một thư mục model CTranslate2, ví dụ PhoWhisper (Whisper huấn
   luyện thêm cho tiếng Việt).
 - **Vosk** (`backend:=vosk`, offline, hợp Raspberry Pi): `bash scripts/download_vosk_model.sh` tải

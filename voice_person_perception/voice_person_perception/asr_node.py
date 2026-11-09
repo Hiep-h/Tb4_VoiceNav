@@ -49,13 +49,26 @@ class AsrNode(Node):
         if get('whisper_prompt'):
             prompt = vocab.whisper_prompt(data)
             self.get_logger().info(f'Whisper prompt: "{prompt}"')
+        backend, fallback = get('backend'), get('fallback')
+        log = self.get_logger()
+
+        def on_backup_ready(error):
+            if error:
+                log.error(f'Không nạp được {fallback} dự phòng: {error}. Chỉ dùng {backend}.')
+            else:
+                log.info(f'{fallback} dự phòng đã sẵn sàng')
+
+        # The fallback (Whisper downloads ~500 MB the first time) loads in the
+        # background, so the main engine is usable at once.
         self._backend = make_backend(
-            get('backend'), get('model_path'), get('whisper_model'),
+            backend, get('model_path'), get('whisper_model'),
             get('language'), TARGET_RATE, grammar=grammar, prompt=prompt,
-            hints=vocab.destination_phrases(data), fallback=get('fallback'))
+            hints=vocab.destination_phrases(data), fallback=fallback, lazy_fallback=True,
+            on_fallback=lambda exc: log.warn(f'{backend} lỗi ({exc}), thử {fallback}'),
+            on_backup_ready=on_backup_ready)
         if isinstance(self._backend, FallbackBackend):
-            self._backend._on_fallback = lambda exc: self.get_logger().warn(
-                f"{get('backend')} lỗi ({exc}), dùng {get('fallback')} cho câu này")
+            log.info(f'Đang tải/nạp {fallback} dự phòng ở nền (lần đầu có thể vài phút); '
+                     f'{backend} dùng được ngay')
         self._vad = EnergyVad(TARGET_RATE, min_rms=float(get('min_rms')),
                               end_silence_ms=int(get('end_silence_ms')))
 

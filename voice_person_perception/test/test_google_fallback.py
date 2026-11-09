@@ -99,3 +99,51 @@ def test_make_backend_rejects_unknown_and_none_means_no_fallback(monkeypatch):
     monkeypatch.setattr(ab, 'WhisperBackend', lambda *a, **k: _Engine(('b', 1.0)))
     assert isinstance(make_backend('google', fallback='none'), _Engine)
     assert isinstance(make_backend('google', fallback='whisper'), FallbackBackend)
+
+
+def test_lazy_backup_loads_in_background_and_is_used_when_ready():
+    import threading
+    gate = threading.Event()
+    ready = []
+
+    def factory():
+        gate.wait(2)
+        return _Engine(('đi ra bếp', 0.6))
+
+    fb = FallbackBackend(_Engine(error=OSError('no network')), factory, 'google', 'whisper',
+                         on_backup_ready=ready.append)
+    assert not fb.backup_ready
+    from voice_person_perception.asr_backends import BackupNotReady
+    with pytest.raises(BackupNotReady):
+        fb.transcribe(AUDIO)  # primary failed, backup still loading
+    gate.set()
+    assert fb.wait_backup(2)
+    assert ready == [None]
+    assert fb.transcribe(AUDIO) == ('đi ra bếp', 0.6)
+
+
+def test_lazy_backup_load_error_is_reported():
+    from voice_person_perception.asr_backends import BackupNotReady
+
+    def factory():
+        raise RuntimeError('download failed')
+
+    ready = []
+    fb = FallbackBackend(_Engine(('ok', 0.9)), factory, 'google', 'whisper',
+                         on_backup_ready=ready.append)
+    fb.wait_backup(2)
+    assert str(ready[0]) == 'download failed'
+    assert fb.transcribe(AUDIO) == ('ok', 0.9)  # primary unaffected
+    fb._primary = _Engine(error=OSError('x'))
+    with pytest.raises(BackupNotReady, match='download failed'):
+        fb.transcribe(AUDIO)
+
+
+def test_make_backend_lazy_does_not_build_backup_inline(monkeypatch):
+    import voice_person_perception.asr_backends as ab
+    built = []
+    monkeypatch.setattr(ab, 'GoogleBackend', lambda *a, **k: _Engine(('a', 1.0)))
+    monkeypatch.setattr(ab, 'WhisperBackend',
+                        lambda *a, **k: built.append(1) or _Engine(('b', 1.0)))
+    fb = make_backend('google', fallback='whisper', lazy_fallback=True)
+    assert fb.wait_backup(2) and built == [1]
