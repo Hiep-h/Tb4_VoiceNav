@@ -21,7 +21,6 @@ setup(
     maintainer_email='hiepga05102005@gmail.com',
     description='Voice command understanding and person detection for the TB4 delivery robot.',
     license='Apache-2.0',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'asr_node = voice_person_perception.asr_node:main',

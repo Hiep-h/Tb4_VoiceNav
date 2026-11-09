@@ -269,7 +269,7 @@ từng trường hợp.
 ## Kiểm thử
 
 ```bash
-cd voice_person_perception && python3 -m pytest test -q
+cd voice_person_perception && python3 -m pytest -p no:anyio test -q   # -p no:anyio: tránh lỗi _pytest.scope với pytest của Ubuntu
 ```
 
 Test phủ phần logic thuần: hiểu lệnh, tách đoạn nói, hình học góc/khoảng cách, định dạng
