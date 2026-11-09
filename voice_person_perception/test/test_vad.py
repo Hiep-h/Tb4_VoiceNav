@@ -130,3 +130,16 @@ def test_normalize_peak():
     tiny = normalize_peak(_tone(0.5, 100))  # gain capped at 8x: noise is not blown up
     assert int(np.max(np.abs(tiny))) <= 801
     assert len(normalize_peak(np.zeros(0, dtype=np.int16))) == 0
+
+
+def test_soft_last_word_is_not_trimmed():
+    import numpy as np
+    from voice_person_perception.vad import EnergyVad
+    # "đi tới trạm" loud, then a soft "sạc" below the release threshold, then silence
+    audio = np.concatenate([_quiet(1.0), _tone(1.0, 4000), _tone(0.4, 200), _quiet(2.0)])
+    old = EnergyVad(16000, end_silence_ms=1500, release_ratio=0.6)
+    new = EnergyVad(16000, end_silence_ms=1500, release_ratio=0.6, tail_ms=600)
+    (cut,) = old.feed(audio)
+    (kept,) = new.feed(audio)
+    assert len(cut) / 16000 < 1.4      # old: soft word trimmed with the silence
+    assert len(kept) / 16000 >= 1.6   # new: loud part + soft word kept

@@ -38,7 +38,7 @@ class EnergyVad:
     def __init__(self, sample_rate=16000, frame_ms=30, min_rms=250.0,
                  noise_ratio=3.0, start_ms=90, end_silence_ms=700,
                  min_utterance_ms=300, max_utterance_s=6.0, preroll_ms=300,
-                 calibration_ms=450, release_ratio=1.0):
+                 calibration_ms=450, release_ratio=1.0, tail_ms=150):
         self.sample_rate = sample_rate
         self.frame_len = int(sample_rate * frame_ms / 1000)
         self.min_rms = min_rms
@@ -46,6 +46,9 @@ class EnergyVad:
         # Inside an utterance, a frame still counts as speech above
         # threshold * release_ratio, so soft syllables do not end the sentence.
         self.release_ratio = release_ratio
+        # Audio kept after the last loud frame. Soft endings ("sạc", "khách")
+        # can sit below the threshold and must not be trimmed as silence.
+        self.tail_frames = max(0, tail_ms // frame_ms)
         self.start_frames = max(1, start_ms // frame_ms)
         self.end_frames = max(1, end_silence_ms // frame_ms)
         self.min_frames = max(1, min_utterance_ms // frame_ms)
@@ -158,7 +161,7 @@ class EnergyVad:
         return audio
 
     def _finish(self):
-        keep = len(self._frames) - max(0, self._silence_run - 5)
+        keep = len(self._frames) - max(0, self._silence_run - self.tail_frames)
         audio = (np.concatenate(self._frames[:keep])
                  if self._voiced >= self.min_frames else None)
         self._in_speech = False

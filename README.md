@@ -118,6 +118,7 @@ Tham số hay chỉnh (`--ros-args -p tên:=giá trị`):
 | | `push_to_talk` | `false` | Chỉ nghe một câu sau mỗi lần bấm nút (`voice_gui`, `/asr_listen`) |
 | | `ptt_end_silence_ms` | `1500` | Bấm-để-nói: im bao lâu thì coi là nói xong |
 | | `release_ratio` | `0.6` | Giữa câu, âm trên ngưỡng × hệ số này vẫn tính là đang nói |
+| | `tail_ms` | `600` | Giữ lại bấy nhiêu ms sau chữ to cuối cùng (chữ cuối nói nhỏ như "sạc") |
 | | `max_utterance_s` | `10` | Câu dài nhất |
 | | `normalize_audio` | `true` | Khuếch đại câu nói nhỏ trước khi nhận dạng |
 | | `save_audio_dir` | `none` | Lưu từng câu ra WAV + `log.tsv` để nghe lại |

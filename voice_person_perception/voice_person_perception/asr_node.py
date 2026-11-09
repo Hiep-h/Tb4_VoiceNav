@@ -36,6 +36,8 @@ class AsrNode(Node):
         self.declare_parameter('max_utterance_s', 10.0)
         # Inside a sentence, sound above threshold * release_ratio still counts as speech.
         self.declare_parameter('release_ratio', 0.6)
+        # Audio kept after the last clearly voiced frame (soft final syllables).
+        self.declare_parameter('tail_ms', 600)
         # Raise quiet sentences to a normal level before recognition.
         self.declare_parameter('normalize_audio', True)
         # Debug: save every sentence sent to the recogniser as WAV + a log line.
@@ -90,7 +92,8 @@ class AsrNode(Node):
         self._vad = EnergyVad(TARGET_RATE, min_rms=float(get('min_rms')),
                               end_silence_ms=end_silence,
                               max_utterance_s=float(get('max_utterance_s')),
-                              release_ratio=float(get('release_ratio')))
+                              release_ratio=float(get('release_ratio')),
+                              tail_ms=int(get('tail_ms')))
 
         self._audio_q = queue.Queue(maxsize=300)
         self._out_q = queue.Queue()
