@@ -1,9 +1,15 @@
-# TB4 VoiceNav: phần cảm nhận (giọng nói và nhận diện người)
+# voice_person_perception: lệnh thoại tiếng Việt và nhận diện người
 
-Phần của đề tài robot giao đồ TurtleBot 4 do mình phụ trách: **hiểu lệnh nói tiếng Việt**
-và **nhận diện người bằng camera OAK-D**. Package chỉ phát kết quả lên topic ROS 2; phần
-điều hướng, dừng và cảnh báo do người làm thực thi đảm nhiệm. Định dạng message nằm trong
-[INTERFACE.md](INTERFACE.md).
+Module HRI của dự án robot giao hàng TurtleBot 4 (`tb4-hri-delivery`, thư mục
+`src/voice_interaction/`), người phụ trách: Hiệp. Package làm hai việc và **chỉ phát thông tin**:
+
+- **Hiểu lệnh nói tiếng Việt** → `/voice/intent` theo hợp đồng nhóm (`docs/interfaces.md` mục 2):
+  6 lệnh `CREATE_DELIVERY`, `GET_STATUS`, `PAUSE`, `RESUME`, `CHANGE_DESTINATION`, `CANCEL`,
+  trạm `A`–`D`. Mission Manager kiểm tra quyền rồi mới cho robot làm.
+- **Nhận diện người bằng camera OAK-D** → `/person_detections` (khoảng cách, góc, đang tiến lại).
+  Dừng hay cảnh báo do Mission Manager quyết định.
+
+Định dạng message chi tiết: [INTERFACE.md](INTERFACE.md).
 
 Muốn chạy từ đầu (vẽ map, đánh dấu điểm đến, cho robot đi): xem
 [Từ vẽ map đến lúc robot đi](#từ-vẽ-map-đến-lúc-robot-đi-làm-theo-thứ-tự).
@@ -20,7 +26,7 @@ voice_person_perception/            package ROS 2 (ament_python)
 ├── config/destinations.yaml        trạm A-D, cách gọi khác và vị trí trên map (dùng chung)
 ├── config/eval_phrases.yaml        câu thử cho eval_voice
 ├── launch/perception.launch.py     chạy thật: micro + camera
-├── launch/fake.launch.py           giả lập cho bên thực thi test khi chưa có robot
+├── launch/fake.launch.py           câu nói và người giả để Mission Manager test khi chưa có robot
 ├── launch/record_bag.launch.py     thu đầu ra thành rosbag để gửi người khác
 ├── voice_person_perception/
 │   ├── intent.py, vad.py, person_math.py, asr_backends.py   logic thuần, có test
@@ -41,8 +47,9 @@ voice_person_perception/            package ROS 2 (ament_python)
 Ubuntu 22.04, ROS 2 Humble.
 
 ```bash
-cd ~/ros2_ws/src && git clone <repo này> && cd ..
-pip install -r requirements.txt      # đã ghim numpy<2, opencv<4.12 cho ROS Humble
+cd ~/ros2_ws/src && git clone https://github.com/dhung68/tb4-hri-delivery && cd ..
+pip install -r src/tb4-hri-delivery/src/voice_interaction/voice_person_perception/requirements.txt
+                                     # đã ghim numpy<2, opencv<4.12 cho ROS Humble
 sudo apt install portaudio19-dev            # cho sounddevice
 colcon build --packages-select voice_person_perception
 source install/setup.bash
@@ -215,7 +222,8 @@ terminal đã `source install/setup.bash`. Để gõ ngắn, đặt biến trỏ
 thư mục `src`** (công cụ ghi vào đây, không phải `install`):
 
 ```bash
-export DEST=~/ros2_ws/src/tb4_voicenav/voice_person_perception/config/destinations.yaml
+export DEST=~/ros2_ws/src/tb4-hri-delivery/src/voice_interaction/voice_person_perception/config/destinations.yaml
+# dùng repo cá nhân Tb4_VoiceNav thì: ~/ros2_ws/src/tb4_voicenav/voice_person_perception/config/destinations.yaml
 ```
 
 ### Bước 1. Vẽ map và đánh dấu điểm đến cùng lúc
@@ -341,7 +349,7 @@ không commit.
 ## Thu dữ liệu bằng ros2 bag
 
 Thu đầu ra của phần cảm nhận (đang chạy `perception.launch.py` ở terminal khác) để gửi cho
-người làm thực thi test khi họ không có robot:
+người làm Mission Manager / Navigation test khi không có robot:
 
 ```bash
 ros2 launch voice_person_perception record_bag.launch.py           # tên theo ngày giờ, nén zstd
@@ -389,15 +397,22 @@ message. Các node ROS được kiểm tra bằng bản giả (stub) của `rclp
   AMCL và RViz thật. Các lệnh `turtlebot4_navigation` ở bước 1-3 theo tài liệu TB4 Humble, kiểm
   tra lại tên launch trên máy nhóm.
 
-## Tích hợp vào repo nhóm
+## Phát triển và cập nhật lên repo nhóm
+
+Code được phát triển ở repo cá nhân `Hiep-h/Tb4_VoiceNav` rồi chép vào repo nhóm, nhánh
+`feature/voice-intent` (PR #1, issue `HRI-01`), theo `docs/workflow.md` của nhóm:
 
 ```bash
-git clone https://github.com/dhung68/tb4-hri-delivery && cd tb4-hri-delivery
-git checkout -b voice-person-perception
-cp -r /đường/dẫn/tb4_voicenav/voice_person_perception .
-cp /đường/dẫn/tb4_voicenav/{INTERFACE.md,requirements.txt} .
-git add . && git commit -m "Add voice and person perception package"
-git push -u origin voice-person-perception
+SRC=~/ros2_ws/src/tb4_voicenav                         # repo cá nhân
+cd ~/tb4-hri-delivery && git switch feature/voice-intent && git pull
+DST=src/voice_interaction/voice_person_perception
+rm -rf $DST && cp -r $SRC/voice_person_perception $DST
+find $DST -name __pycache__ -prune -exec rm -rf {} +
+mkdir -p $DST/docs && cp $SRC/docs/* $DST/docs/
+cp $SRC/README.md $SRC/INTERFACE.md $SRC/requirements.txt $DST/ && cp -r $SRC/scripts $DST/
+git add src/voice_interaction && git commit -m "feat: ..." && git push
 ```
+
+Không clone cả hai repo vào cùng `ros2_ws/src`: colcon sẽ thấy hai package trùng tên.
 
 Nguồn ý tưởng và giấy phép: [docs/references.md](docs/references.md).
