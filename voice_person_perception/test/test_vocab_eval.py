@@ -35,67 +35,91 @@ def _id_by_phrase():
 
 
 def test_grammar_has_commands_and_ends_with_unk():
-    assert 'đi đến phòng khách' in GRAMMAR
-    assert 'dừng lại' in GRAMMAR and 'hủy' in GRAMMAR
+    assert 'đi đến trạm a' in GRAMMAR
+    assert 'mang hàng từ trạm a đến trạm b' in GRAMMAR
+    assert 'đổi sang trạm c' in GRAMMAR
+    for phrase in ('dừng lại', 'tiếp tục', 'hủy', 'trạng thái'):
+        assert phrase in GRAMMAR
     assert GRAMMAR[-1] == vocab.UNK
     assert len(GRAMMAR) == len(set(GRAMMAR))
 
 
 def test_grammar_skips_digits_but_keeps_spelled_numbers():
-    assert not any(c.isdigit() for p in GRAMMAR for c in p)
-    assert 'đi đến phòng một không một' in GRAMMAR
+    data = {'destinations': [{'id': 'P101', 'name': 'phòng 101',
+                              'aliases': ['phòng một không một']}]}
+    grammar = vocab.vosk_grammar(data)
+    assert not any(c.isdigit() for p in grammar for c in p)
+    assert 'đi đến phòng một không một' in grammar
 
 
 @pytest.mark.parametrize('dest', [d for d in vocab.destination_phrases(DATA)
                                   if not any(c.isdigit() for c in d)])
-def test_every_grammar_go_phrase_resolves_to_its_destination(dest):
+def test_every_grammar_phrase_resolves_to_its_station(dest):
     want = _id_by_phrase()[dest]
     for template in vocab.GO_TEMPLATES:
         r = parse_utterance(template.format(dest), DESTS)
-        assert (r.intent, r.destination) == ('GO_TO', want), template.format(dest)
+        assert (r.intent, r.destination) == ('CREATE_DELIVERY', want), template.format(dest)
+    for template in vocab.CHANGE_TEMPLATES:
+        r = parse_utterance(template.format(dest), DESTS)
+        assert (r.intent, r.destination) == ('CHANGE_DESTINATION', want), template.format(dest)
 
 
-def test_grammar_stop_and_cancel_phrases_match_intent():
-    assert all(parse_utterance(p, DESTS).intent == 'STOP' for p in vocab.STOP_PHRASES)
-    assert all(parse_utterance(p, DESTS).intent == 'CANCEL' for p in vocab.CANCEL_PHRASES)
+def test_grammar_route_phrases_give_source_and_destination():
+    for template in vocab.ROUTE_TEMPLATES:
+        r = parse_utterance(template.format('trạm a', 'trạm d'), DESTS)
+        assert (r.intent, r.source, r.destination) == ('CREATE_DELIVERY', 'A', 'D'), template
 
 
-def test_whisper_prompt_names_destinations_and_echo_is_filtered():
+@pytest.mark.parametrize('phrases, intent', [
+    (vocab.PAUSE_PHRASES, 'PAUSE'), (vocab.RESUME_PHRASES, 'RESUME'),
+    (vocab.CANCEL_PHRASES, 'CANCEL'), (vocab.STATUS_PHRASES, 'GET_STATUS')])
+def test_grammar_keyword_phrases_match_intent(phrases, intent):
+    for p in phrases:
+        assert parse_utterance(p, DESTS).intent == intent, p
+
+
+def test_whisper_prompt_names_stations_and_echo_is_filtered():
     prompt = vocab.whisper_prompt(DATA)
-    assert 'phòng khách' in prompt and 'trạm sạc' in prompt
+    assert 'trạm A' in prompt and 'trạm D' in prompt
     assert is_hallucination(prompt)
-    assert not is_hallucination('mang đồ đến phòng khách')
+    assert not is_hallucination('mang hàng đến trạm B')
 
 
-def _case(intent, dest=None):
-    return Case('c', 'x', intent, dest)
+def _case(intent, dest=None, source=None):
+    return Case('c', 'x', intent, dest, source)
 
 
-def _res(intent, dest=None, confirm=False):
-    return ParseResult(intent, dest, 0.9, confirm, [])
+def _res(intent, dest=None, confirm=False, source=None):
+    return ParseResult(intent, dest, 0.9, confirm, [], source)
 
 
 def test_classify_outcomes():
-    go_bep = _case('GO_TO', 'bep')
-    assert classify(go_bep, 'x', _res('GO_TO', 'bep')) == CORRECT_AUTO
-    assert classify(go_bep, 'x', _res('GO_TO', 'bep', True)) == CORRECT_CONFIRM
-    assert classify(go_bep, 'x', _res('GO_TO', 'phong_khach', True)) == WRONG_CONFIRM
-    assert classify(go_bep, 'x', _res('UNKNOWN')) == WRONG_CONFIRM
-    assert classify(go_bep, 'x', _res('GO_TO', 'phong_khach')) == WRONG_AUTO
-    assert classify(go_bep, '', None) == MISSED
-    # Unknown place must not make the robot leave without asking.
-    assert classify(_case('UNKNOWN'), 'x', _res('GO_TO', 'bep')) == WRONG_AUTO
-    assert classify(_case('STOP'), 'x', _res('STOP')) == CORRECT_AUTO
-    assert classify(_case('STOP'), 'x', _res('CANCEL')) == WRONG_AUTO
+    to_b = _case('CREATE_DELIVERY', 'B')
+    assert classify(to_b, 'x', _res('CREATE_DELIVERY', 'B')) == CORRECT_AUTO
+    assert classify(to_b, 'x', _res('CREATE_DELIVERY', 'B', True)) == CORRECT_CONFIRM
+    assert classify(to_b, 'x', _res('CREATE_DELIVERY', 'C', True)) == WRONG_CONFIRM
+    assert classify(to_b, 'x', _res('UNKNOWN')) == WRONG_CONFIRM
+    assert classify(to_b, 'x', _res('CREATE_DELIVERY', 'C')) == WRONG_AUTO
+    assert classify(to_b, '', None) == MISSED
+    a_to_b = _case('CREATE_DELIVERY', 'B', 'A')
+    assert classify(a_to_b, 'x', _res('CREATE_DELIVERY', 'B', source='A')) == CORRECT_AUTO
+    assert classify(a_to_b, 'x', _res('CREATE_DELIVERY', 'B', source='C')) == WRONG_AUTO
+    # A place that is not a station must not make the robot leave without asking.
+    assert classify(_case('UNKNOWN'), 'x', _res('CREATE_DELIVERY', 'B')) == WRONG_AUTO
+    assert classify(_case('PAUSE'), 'x', _res('PAUSE')) == CORRECT_AUTO
+    assert classify(_case('PAUSE'), 'x', _res('CANCEL')) == WRONG_AUTO
+    assert classify(_case('CHANGE_DESTINATION', 'C'), 'x',
+                    _res('CHANGE_DESTINATION', 'C')) == CORRECT_AUTO
 
 
-def test_eval_phrases_typed_perfectly_never_act_wrongly():
+def test_eval_phrases_typed_perfectly_are_all_right():
     cases = load_cases(yaml.safe_load((CONFIG / 'eval_phrases.yaml').read_text(encoding='utf-8')))
     ids = {d.id for d in DESTS}
     for c in cases:
         assert c.expect_destination is None or c.expect_destination in ids
+        assert c.expect_source is None or c.expect_source in ids
         r = parse_utterance(c.say, DESTS)
-        assert classify(c, c.say, r) != WRONG_AUTO, c.say
+        assert classify(c, c.say, r) == CORRECT_AUTO, c.say
 
 
 def test_summarize():

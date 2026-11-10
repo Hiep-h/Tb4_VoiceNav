@@ -1,14 +1,16 @@
 # Câu thử cho `eval_voice` (đo nhận dạng giọng nói + hiểu lệnh).
-# `expect_destination` phải là `id` trong destinations.yaml; bỏ trống với STOP/CANCEL/UNKNOWN.
-# Câu UNKNOWN là điểm đến KHÔNG có trong danh sách: robot phải không đi đâu cả.
+# expect_intent: CREATE_DELIVERY | CHANGE_DESTINATION | PAUSE | RESUME | CANCEL | GET_STATUS | UNKNOWN
+# expect_source / expect_destination: mã trạm trong destinations.yaml (A-D).
+# Câu UNKNOWN là chỗ KHÔNG phải trạm: robot không được đi đâu cả.
 cases:
-  - {say: "đi đến phòng khách", expect_intent: GO_TO, expect_destination: phong_khach}
-  - {say: "mang đồ xuống bếp giúp mình", expect_intent: GO_TO, expect_destination: bep}
-  - {say: "mang cái này ra chỗ nấu ăn", expect_intent: GO_TO, expect_destination: bep}
-  - {say: "giao đến phòng một trăm linh một", expect_intent: GO_TO, expect_destination: phong_101}
-  - {say: "đem qua phòng một không hai nhé", expect_intent: GO_TO, expect_destination: phong_102}
-  - {say: "về trạm sạc đi", expect_intent: GO_TO, expect_destination: tram_sac}
-  - {say: "dừng lại", expect_intent: STOP}
-  - {say: "thôi không cần nữa", expect_intent: CANCEL}
+  - {say: "mang hàng từ trạm A đến trạm B", expect_intent: CREATE_DELIVERY, expect_source: A, expect_destination: B}
+  - {say: "lấy hàng ở trạm C giao đến trạm D", expect_intent: CREATE_DELIVERY, expect_source: C, expect_destination: D}
+  - {say: "giao đến trạm B", expect_intent: CREATE_DELIVERY, expect_destination: B}
+  - {say: "mang cái này sang trạm D giúp mình", expect_intent: CREATE_DELIVERY, expect_destination: D}
+  - {say: "đổi sang trạm C", expect_intent: CHANGE_DESTINATION, expect_destination: C}
+  - {say: "dừng lại", expect_intent: PAUSE}
+  - {say: "tiếp tục đi", expect_intent: RESUME}
+  - {say: "đơn hàng đến đâu rồi", expect_intent: GET_STATUS}
+  - {say: "thôi hủy đơn", expect_intent: CANCEL}
   - {say: "đi đến nhà vệ sinh", expect_intent: UNKNOWN}
   - {say: "hôm nay trời đẹp quá", expect_intent: UNKNOWN}

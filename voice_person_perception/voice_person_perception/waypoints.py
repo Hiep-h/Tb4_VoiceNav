@@ -3,12 +3,12 @@
 Each destination may carry the pose the robot should drive to, in the `map`
 frame of the saved map:
 
-    - id: bep
-      name: bếp
-      aliases: [nhà bếp, chỗ tủ lạnh]
+    - id: B
+      name: trạm B
+      aliases: [điểm B, bếp]
       pose: {x: 1.25, y: -0.4, yaw: 1.571}
 
-The voice side only reads id/name/aliases; the execution side reads `pose`.
+The voice side only reads id/name/aliases; the Navigation Client reads `pose`.
 """
 
 from __future__ import annotations
@@ -22,9 +22,9 @@ import unicodedata
 import yaml
 
 HEADER = """\
-# Danh sách điểm đến dùng chung giữa phần giọng nói và bên thực thi.
-# - id: tên waypoint mà /voice_command gửi đi (không dấu, không cách).
-# - name, aliases: các cách gọi; thêm cả từ mà nhận dạng hay nghe nhầm.
+# Trạm giao hàng dùng chung giữa phần giọng nói và Navigation Client.
+# - id: mã trạm theo docs/interfaces.md (A, B, C, D); /voice/intent gửi đúng mã này.
+# - name, aliases: các cách gọi (thêm tên chỗ thật, vd. "bếp", và từ hay bị nghe nhầm).
 #   Viết số bằng chữ trong aliases ("một không một").
 # - pose: vị trí robot cần tới, hệ `map` của bản đồ ghi ở `map`; yaw tính bằng radian.
 # Ghi bằng `ros2 run voice_person_perception waypoint_marker`, sửa tay cũng được.

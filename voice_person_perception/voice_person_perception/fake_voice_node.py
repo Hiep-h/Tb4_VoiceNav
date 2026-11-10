@@ -7,12 +7,14 @@ from std_msgs.msg import String
 from voice_person_perception import contract
 
 DEFAULT_SCRIPT = [
-    'mang đồ đến phòng khách',
+    'mang hàng từ trạm A đến trạm B',
     'dừng lại',
-    'đưa tới chỗ nấu ăn',
-    'hủy đi',
+    'tiếp tục',
+    'đổi sang trạm C',
+    'đơn hàng đến đâu rồi',
+    'hủy đơn',
     'hôm nay trời đẹp quá',
-    'đến phòng khác',
+    'giao đến trạm bê',
 ]
 
 

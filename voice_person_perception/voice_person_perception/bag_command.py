@@ -8,7 +8,7 @@ from voice_person_perception import contract
 # What the executor needs: small, and enough to re-run the intent resolver.
 PERCEPTION_TOPICS = [
     contract.SPEECH_TEXT_TOPIC,
-    contract.VOICE_COMMAND_TOPIC,
+    contract.VOICE_INTENT_TOPIC,
     contract.PERSON_TOPIC,
 ]
 

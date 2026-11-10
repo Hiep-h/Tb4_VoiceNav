@@ -1,5 +1,6 @@
 import pathlib
 
+import pytest
 import yaml
 
 from voice_person_perception.intent import (
@@ -10,70 +11,116 @@ from voice_person_perception.intent import (
 
 CONFIG = pathlib.Path(__file__).resolve().parents[1] / 'config' / 'destinations.yaml'
 DESTS = load_destinations(yaml.safe_load(CONFIG.read_text(encoding='utf-8')))
+ROOMS = load_destinations({'destinations': [
+    {'id': 'A', 'name': 'trạm A', 'aliases': ['bếp', 'nhà bếp']},
+    {'id': 'B', 'name': 'trạm B', 'aliases': ['phòng khách']},
+    {'id': 'P101', 'name': 'phòng 101', 'aliases': ['phòng một không một']},
+    {'id': 'P102', 'name': 'phòng 102', 'aliases': ['phòng một không hai']},
+]})
 
 
-def go(text, **kw):
-    return parse_utterance(text, DESTS, **kw)
+def say(text, dests=DESTS, **kw):
+    return parse_utterance(text, dests, **kw)
+
+
+def route(text, dests=DESTS):
+    r = say(text, dests)
+    return r.intent, r.source, r.destination, r.needs_confirm
 
 
 def test_normalize_handles_d_with_stroke():
-    assert normalize('Mang ĐẾN phòng Khách!') == 'mang den phong khach'
+    assert normalize('Mang ĐẾN trạm Bê!') == 'mang den tram be'
 
 
-def test_exact_destination_is_confident():
-    r = go('mang đồ đến phòng khách')
-    assert (r.intent, r.destination, r.needs_confirm) == ('GO_TO', 'phong_khach', False)
+@pytest.mark.parametrize('text, src, dst', [
+    ('mang hàng từ trạm A đến trạm B', 'A', 'B'),
+    ('lấy hàng ở trạm C giao đến trạm D', 'C', 'D'),
+    ('từ trạm D mang sang trạm A', 'D', 'A'),
+    ('trạm A trạm C', 'A', 'C'),                 # no markers: first is the source
+    ('giao đến trạm B', None, 'B'),
+    ('mang cái này sang trạm D giúp mình', None, 'D'),
+    ('mang đến B', None, 'B'),                   # bare letter after "đến"
+    ('đi tới trạm đê', None, 'D'),               # letter as it is read
+    ('mang den tram b', None, 'B'),              # no accents
+])
+def test_create_delivery(text, src, dst):
+    assert route(text) == ('CREATE_DELIVERY', src, dst, False)
 
 
-def test_alias_matches():
-    assert go('đi tới chỗ nấu ăn').destination == 'bep'
+def test_spoken_letter_without_tram_asks_to_confirm():
+    assert route('mang đến bê') == ('CREATE_DELIVERY', None, 'B', True)
 
 
-def test_missing_accents_still_match():
-    assert go('mang den phong khach').destination == 'phong_khach'
+def test_source_only_asks_where_to_deliver():
+    assert route('lấy hàng ở trạm A') == ('CREATE_DELIVERY', 'A', None, True)
 
 
-def test_small_asr_error_still_resolves_but_asks_to_confirm():
-    r = go('mang đến phòng khác')
-    assert r.destination == 'phong_khach'
-    assert r.needs_confirm
+@pytest.mark.parametrize('text, dst', [
+    ('đổi sang trạm C', 'C'),
+    ('đổi đích từ B sang C', 'C'),
+    ('chuyển sang D', 'D'),
+    ('thôi đổi sang trạm C', 'C'),   # "thôi" here is not a cancel
+])
+def test_change_destination(text, dst):
+    assert route(text) == ('CHANGE_DESTINATION', None, dst, False)
 
 
-def test_room_numbers_must_match_exactly():
-    assert go('đến phòng 101').destination == 'phong_101'
-    assert go('đến phòng 102').destination == 'phong_102'
-    assert go('đến phòng 103').intent == 'UNKNOWN'
+@pytest.mark.parametrize('text, intent', [
+    ('dừng lại', 'PAUSE'), ('Dừng!', 'PAUSE'), ('tạm dừng', 'PAUSE'), ('stop', 'PAUSE'),
+    ('dung lai', 'PAUSE'), ('chờ đã', 'PAUSE'),
+    ('tiếp tục', 'RESUME'), ('đi tiếp đi', 'RESUME'),
+    ('hủy đơn', 'CANCEL'), ('thôi không cần nữa', 'CANCEL'),
+    ('đơn hàng đến đâu rồi', 'GET_STATUS'), ('robot đang ở đâu', 'GET_STATUS'),
+    ('giao xong chưa', 'GET_STATUS'),
+])
+def test_keyword_intents(text, intent):
+    r = say(text)
+    assert (r.intent, r.source, r.destination, r.needs_confirm) == (intent, None, None, False)
 
 
-def test_spoken_digits_alias():
-    assert go('phòng một không hai').destination == 'phong_102'
-
-
-def test_stop_and_cancel():
-    assert go('dừng lại').intent == 'STOP'
-    assert go('Dừng!').intent == 'STOP'
-    assert go('stop').intent == 'STOP'
-    assert go('hủy đi').intent == 'CANCEL'
+def test_pause_wins_over_everything():
+    assert say('dừng lại, đừng đi đến trạm B').intent == 'PAUSE'
 
 
 def test_dung_without_accent_is_not_a_bare_stop():
     # "đúng" / "dùng" lose their accents too; only the phrase counts.
-    assert go('dung roi').intent == 'UNKNOWN'
-    assert go('dung lai').intent == 'STOP'
-    assert go('đúng rồi').intent == 'UNKNOWN'
+    assert say('dung roi').intent == 'UNKNOWN'
+    assert say('đúng rồi').intent == 'UNKNOWN'
 
 
-def test_unknown_sentence():
-    r = go('hôm nay trời đẹp quá')
-    assert r.intent == 'UNKNOWN' and r.destination is None
+@pytest.mark.parametrize('text', [
+    'hôm nay trời đẹp quá', 'đi đến nhà vệ sinh', 'mang đến trạm E', 'đến trạm phê',
+    'cho đồ vào thùng',
+])
+def test_not_a_station(text):
+    r = say(text)
+    assert (r.intent, r.destination) == ('UNKNOWN', None)
 
 
-def test_low_asr_confidence_needs_confirm_and_lowers_confidence():
-    r = go('mang đến phòng khách', asr_conf=0.4)
+def test_room_names_as_aliases():
+    assert route('mang đồ ra nhà bếp', ROOMS) == ('CREATE_DELIVERY', None, 'A', False)
+    assert route('từ bếp mang sang phòng khách', ROOMS) == ('CREATE_DELIVERY', 'A', 'B', False)
+
+
+def test_small_asr_error_still_resolves_but_asks_to_confirm():
+    assert route('mang đến phòng khác', ROOMS) == ('CREATE_DELIVERY', None, 'B', True)
+
+
+def test_numbers_must_match_exactly():
+    assert say('đến phòng 101', ROOMS).destination == 'P101'
+    assert say('đến phòng 102', ROOMS).destination == 'P102'
+    assert say('đến phòng 103', ROOMS).intent == 'UNKNOWN'
+    assert say('phòng một không hai', ROOMS).destination == 'P102'
+
+
+def test_low_asr_confidence_asks_and_lowers_confidence():
+    r = say('mang đến trạm B', asr_conf=0.4)
     assert r.needs_confirm and r.confidence < 0.5
+    assert say('dừng lại', asr_conf=0.4).needs_confirm is False  # never delay a stop
 
 
-def test_candidates_are_sorted():
-    r = go('đến phòng khách')
+def test_candidates_are_sorted_and_named():
+    r = say('mang đến trạm B')
+    assert r.candidates[0]['station'] == 'B'
     scores = [c['score'] for c in r.candidates]
     assert scores == sorted(scores, reverse=True)

@@ -33,6 +33,7 @@ import numpy as np
 import yaml
 
 from voice_person_perception import vocab
+from voice_person_perception.contract import STATION_INTENTS
 from voice_person_perception.intent import load_destinations, parse_utterance
 from voice_person_perception.vad import EnergyVad
 
@@ -54,13 +55,19 @@ class Case:
     say: str
     expect_intent: str
     expect_destination: str | None
+    expect_source: str | None = None
+
+
+def _station(value):
+    return None if value is None else str(value)
 
 
 def load_cases(data):
     cases = []
     for i, item in enumerate(data['cases'], 1):
-        cases.append(Case(item.get('id', f'c{i:02d}'), item['say'],
-                          item['expect_intent'], item.get('expect_destination')))
+        cases.append(Case(item.get('id', f'c{i:02d}'), item['say'], item['expect_intent'],
+                          _station(item.get('expect_destination')),
+                          _station(item.get('expect_source'))))
     return cases
 
 
@@ -68,10 +75,12 @@ def classify(case, text, result):
     """Outcome class of one attempt. result is a ParseResult or None."""
     if not text or result is None:
         return MISSED
+    stations = case.expect_intent in STATION_INTENTS
     right = (result.intent == case.expect_intent
-             and (case.expect_intent != 'GO_TO'
-                  or result.destination == case.expect_destination))
-    asks = result.intent == 'GO_TO' and result.needs_confirm
+             and (not stations or result.destination == case.expect_destination)
+             and (not stations or case.expect_source is None
+                  or result.source == case.expect_source))
+    asks = result.intent in STATION_INTENTS and result.needs_confirm
     if right:
         return CORRECT_CONFIRM if asks else CORRECT_AUTO
     if result.intent == 'UNKNOWN' or asks:
@@ -250,15 +259,20 @@ def main(argv=None):
             'case': case.id, 'rep': rep, 'say': case.say,
             'heard': text, 'asr_conf': round(conf, 2), 'asr_s': round(asr_s, 3),
             'intent': result.intent if result else '',
+            'source': (result.source or '') if result else '',
             'destination': (result.destination or '') if result else '',
             'needs_confirm': result.needs_confirm if result else '',
             'expect_intent': case.expect_intent,
+            'expect_source': case.expect_source or '',
             'expect_destination': case.expect_destination or '',
             'outcome': outcome, 'wav': os.path.basename(path) if path else '',
         })
         mark = 'OK ' if outcome in (CORRECT_AUTO, CORRECT_CONFIRM) else 'SAI'
-        print(f'   {mark} nghe "{text}" -> {rows[-1]["intent"]} '
-              f'{rows[-1]["destination"]} ({outcome}, {asr_s:.2f}s)')
+        route = ''
+        if rows[-1]['source'] or rows[-1]['destination']:
+            route = f" {rows[-1]['source'] or '?'}->{rows[-1]['destination'] or '?'}"
+        print(f'   {mark} nghe "{text}" -> {rows[-1]["intent"]}{route} '
+              f'({outcome}, {asr_s:.2f}s)')
 
     if not rows:
         print('Không có mẫu nào.')

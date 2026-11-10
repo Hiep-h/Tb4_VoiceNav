@@ -78,9 +78,16 @@ class WaypointMarker(Node):
         key = name.strip().lower()
         for item in self.data['destinations']:
             names = [item.get('name', '').lower()] + [a.lower() for a in item.get('aliases', [])]
-            if key == item['id'] or key in names:
+            if key == str(item['id']).lower() or key in names:
                 return item['id']
         return wp.slugify(name)
+
+    def _existing_id(self, answer):
+        """Keep an existing id as written ("A", not "a"); slugify new ones."""
+        for item in self.data['destinations']:
+            if answer.strip().lower() == str(item['id']).lower():
+                return item['id']
+        return wp.slugify(answer)
 
     def _list(self):
         if not self.data['destinations']:
@@ -113,7 +120,7 @@ class WaypointMarker(Node):
                 print(f'  Không lấy được vị trí robot: {exc}')
                 return
         print(f'  Vị trí: x={x:.2f} y={y:.2f} hướng={math.degrees(yaw):.0f}°')
-        dest_id = wp.slugify(self._ask('id (không dấu)', self._resolve_id(name)))
+        dest_id = self._existing_id(self._ask('id (không dấu)', self._resolve_id(name)))
         if not dest_id:
             print('  id rỗng, bỏ qua.')
             return

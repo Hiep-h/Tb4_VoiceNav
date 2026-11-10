@@ -1,22 +1,21 @@
-# Danh sách điểm đến dùng chung giữa phần giọng nói và bên thực thi.
-# - id: tên waypoint mà /voice_command gửi đi (không dấu, không cách).
-# - name, aliases: các cách gọi; thêm cả từ mà nhận dạng hay nghe nhầm.
-#   Viết số bằng chữ trong aliases ("một không một").
+# Trạm giao hàng dùng chung giữa phần giọng nói và Navigation Client.
+# - id: mã trạm theo docs/interfaces.md (A, B, C, D); /voice/intent gửi đúng mã này.
+# - name, aliases: các cách gọi. THÊM tên chỗ thật của từng trạm vào aliases
+#   (vd. "bếp", "bàn thầy", "cửa phòng lab") để nói "mang đến bếp" cũng hiểu là trạm đó,
+#   và các từ mà nhận dạng hay nghe nhầm (xem cột `heard` khi chạy eval_voice).
+#   Nói "đến B", "sang C" (không có chữ "trạm") cũng nhận được.
 # - pose: vị trí robot cần tới, hệ `map` của bản đồ ghi ở `map`; yaw tính bằng radian.
 # Ghi bằng `ros2 run voice_person_perception waypoint_marker`, sửa tay cũng được.
 destinations:
-- id: bep
-  name: bếp
-  aliases: [nhà bếp, chỗ nấu ăn, khu bếp]
-- id: phong_khach
-  name: phòng khách
-  aliases: [phòng sinh hoạt, chỗ tiếp khách]
-- id: phong_101
-  name: phòng 101
-  aliases: [phòng một không một, phòng một trăm linh một]
-- id: phong_102
-  name: phòng 102
-  aliases: [phòng một không hai, phòng một trăm linh hai]
-- id: tram_sac
-  name: trạm sạc
-  aliases: [chỗ sạc, về trạm, về chỗ sạc]
+- id: A
+  name: trạm A
+  aliases: [điểm A, vị trí A]
+- id: B
+  name: trạm B
+  aliases: [điểm B, vị trí B, trạm bê, trạm bờ, điểm bê]
+- id: C
+  name: trạm C
+  aliases: [điểm C, vị trí C, trạm xê, trạm cê, trạm xi, điểm xê]
+- id: D
+  name: trạm D
+  aliases: [điểm D, vị trí D, trạm đê, trạm dê, điểm đê]

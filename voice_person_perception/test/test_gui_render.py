@@ -7,19 +7,29 @@ from PIL import Image
 from voice_person_perception import contract
 from voice_person_perception import gui_render as gr
 
-NAMES = {'bep': 'bếp', 'phong_khach': 'phòng khách', 'phong_101': 'phòng 101'}
+NAMES = {'A': 'trạm A', 'B': 'trạm B', 'C': 'trạm C'}
 
 
 def test_describe_command():
     assert gr.describe_command(None) == ('Chưa có lệnh', gr.GREY)
-    go = {'intent': 'GO_TO', 'destination': 'bep', 'needs_confirm': False}
-    assert gr.describe_command(go, NAMES) == ('Đi đến: bếp', gr.GREEN)
-    ask = {'intent': 'GO_TO', 'destination': 'phong_khach', 'needs_confirm': True,
-           'candidates': [{'destination': 'phong_khach', 'score': 0.95},
-                          {'destination': 'phong_101', 'score': 0.6}]}
+    go = {'intent': 'CREATE_DELIVERY', 'source_station': 'A', 'destination_station': 'B',
+          'needs_confirm': False}
+    assert gr.describe_command(go, NAMES) == ('Giao hàng trạm A → trạm B', gr.GREEN)
+    to_b = dict(go, source_station=None)
+    assert gr.describe_command(to_b, NAMES) == ('Giao hàng đến trạm B', gr.GREEN)
+    ask = {'intent': 'CREATE_DELIVERY', 'source_station': None, 'destination_station': 'B',
+           'needs_confirm': True,
+           'candidates': [{'station': 'B', 'score': 0.9}, {'station': 'C', 'score': 0.6}]}
     text, colour = gr.describe_command(ask, NAMES)
-    assert 'phòng khách?' in text and 'phòng 101' in text and colour == gr.AMBER
-    assert gr.describe_command({'intent': 'STOP'})[1] == gr.RED
+    assert 'trạm B?' in text and 'trạm C' in text and colour == gr.AMBER
+    no_dst = dict(go, destination_station=None, needs_confirm=True)
+    assert 'giao đến đâu' in gr.describe_command(no_dst, NAMES)[0]
+    change = {'intent': 'CHANGE_DESTINATION', 'destination_station': 'C'}
+    assert gr.describe_command(change, NAMES) == ('Đổi đích sang trạm C', gr.GREEN)
+    assert gr.describe_command({'intent': 'PAUSE'})[1] == gr.RED
+    assert gr.describe_command({'intent': 'RESUME'})[1] == gr.GREEN
+    assert gr.describe_command({'intent': 'CANCEL'})[0] == 'Hủy đơn'
+    assert gr.describe_command({'intent': 'GET_STATUS'})[1] == gr.BLUE
     assert gr.describe_command({'intent': 'UNKNOWN'})[0].startswith('Không hiểu')
 
 
@@ -73,7 +83,8 @@ def test_panels_render_every_state(state, tmp_path):
         'fallback': 'whisper', 'backup_ready': False, 'push_to_talk': True}
     view = {'status': status, 'heard': {'text': 'mang đồ đến bếp', 'latency_s': 1.0,
                                         'asr_conf': 0.9},
-            'command': {'intent': 'GO_TO', 'destination': 'bep'}, 'names': NAMES,
+            'command': {'intent': 'CREATE_DELIVERY', 'source_station': 'A',
+                        'destination_station': 'B'}, 'names': NAMES,
             'persons': {'healthy': True, 'persons': []}, 'persons_age': 0.1}
     left = gr.render_voice_panel(view, t=1.0)
     dests = [{'id': 'bep', 'name': 'bếp', 'pose': {'x': 0.5, 'y': 0.5, 'yaw': 0.0}},

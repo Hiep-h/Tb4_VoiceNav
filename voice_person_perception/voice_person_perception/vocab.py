@@ -13,19 +13,23 @@ from __future__ import annotations
 
 UNK = '[unk]'
 
-# Ways people start a delivery command. "{}" is the destination.
+# Ways people ask for a delivery. "{}" is the station.
 GO_TEMPLATES = (
     '{}',
-    'đi đến {}', 'đi tới {}', 'đến {}', 'tới {}', 'ra {}', 'vào {}', 'về {}',
-    'mang đến {}', 'mang tới {}', 'mang đồ đến {}', 'mang đồ tới {}',
-    'mang cái này đến {}', 'giao đến {}', 'giao đồ đến {}', 'giao hàng đến {}',
-    'di chuyển đến {}', 'chở đến {}', 'đem đến {}', 'đem đồ đến {}',
+    'đi đến {}', 'đi tới {}', 'đến {}', 'tới {}', 'ra {}', 'về {}',
+    'mang đến {}', 'mang tới {}', 'mang hàng đến {}', 'mang đồ đến {}',
+    'giao đến {}', 'giao hàng đến {}', 'giao tới {}', 'chở đến {}', 'đem đến {}',
 )
+CHANGE_TEMPLATES = ('đổi sang {}', 'đổi đích sang {}', 'chuyển sang {}', 'đổi đến {}')
+ROUTE_TEMPLATES = ('từ {} đến {}', 'mang hàng từ {} đến {}', 'lấy hàng ở {} giao đến {}')
 
-# Must stay in line with the STOP/CANCEL patterns in intent.py.
-STOP_PHRASES = ('dừng', 'dừng lại', 'ngừng', 'ngừng lại', 'đứng lại', 'khẩn cấp',
-                'robot dừng lại')
-CANCEL_PHRASES = ('hủy', 'hủy lệnh', 'bỏ qua', 'không cần', 'không cần nữa', 'thôi')
+# Must stay in line with the keyword patterns in intent.py.
+PAUSE_PHRASES = ('dừng', 'dừng lại', 'tạm dừng', 'ngừng', 'ngừng lại', 'đứng lại',
+                 'chờ đã', 'khẩn cấp', 'robot dừng lại')
+RESUME_PHRASES = ('tiếp tục', 'đi tiếp', 'chạy tiếp', 'tiếp tục giao')
+CANCEL_PHRASES = ('hủy', 'hủy đơn', 'hủy lệnh', 'bỏ qua', 'không cần', 'không cần nữa', 'thôi')
+STATUS_PHRASES = ('trạng thái', 'đơn hàng đến đâu rồi', 'đến đâu rồi', 'robot đang ở đâu',
+                  'giao xong chưa', 'bao giờ đến')
 
 
 def destination_phrases(data):
@@ -46,8 +50,15 @@ def vosk_grammar(data, templates=GO_TEMPLATES):
         if any(c.isdigit() for c in dest):
             continue
         phrases.extend(t.format(dest) for t in templates)
-    phrases.extend(STOP_PHRASES)
-    phrases.extend(CANCEL_PHRASES)
+        phrases.extend(t.format(dest) for t in CHANGE_TEMPLATES)
+    names = [n for n in (str(i.get('name', i['id'])).lower() for i in data['destinations'])
+             if not any(c.isdigit() for c in n)]
+    for src in names:  # source -> destination, main names only to keep the list short
+        for dst in names:
+            if src != dst:
+                phrases.extend(t.format(src, dst) for t in ROUTE_TEMPLATES)
+    for group in (PAUSE_PHRASES, RESUME_PHRASES, CANCEL_PHRASES, STATUS_PHRASES):
+        phrases.extend(group)
     phrases = list(dict.fromkeys(phrases))
     phrases.append(UNK)
     return phrases
@@ -56,4 +67,4 @@ def vosk_grammar(data, templates=GO_TEMPLATES):
 def whisper_prompt(data):
     """Short prompt naming the destination names (not every alias)."""
     names = [item.get('name', item['id']) for item in data['destinations']]
-    return 'Lệnh cho robot giao đồ. Các điểm đến: ' + ', '.join(names) + '.'
+    return 'Lệnh cho robot giao hàng. Các trạm: ' + ', '.join(names) + '.'

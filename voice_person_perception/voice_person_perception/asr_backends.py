@@ -23,7 +23,8 @@ _HALLUCINATIONS = re.compile(
 
 
 # With an initial_prompt, Whisper sometimes repeats the prompt on noise.
-_PROMPT_ECHO = re.compile(r'(các điểm đến|lệnh cho robot giao đồ)', re.IGNORECASE)
+_PROMPT_ECHO = re.compile(r'(các trạm:|các điểm đến|lệnh cho robot giao (đồ|hàng))',
+                          re.IGNORECASE)
 
 
 def is_hallucination(text):

@@ -60,7 +60,7 @@ def test_save_load_round_trip_with_backup(tmp_path):
     original = yaml.safe_load(CONFIG.read_text(encoding='utf-8'))
     data['map'] = 'lab'
     data['frame'] = 'map'
-    wp.upsert(data, 'bep', None, ['chỗ tủ lạnh'], wp.make_pose(1.5, -0.25, 1.571))
+    wp.upsert(data, 'B', None, ['bếp'], wp.make_pose(1.5, -0.25, 1.571))
     wp.save(str(path), data)
     wp.save(str(path), data)
 
@@ -71,8 +71,9 @@ def test_save_load_round_trip_with_backup(tmp_path):
     again = wp.load(str(path))
     assert again['map'] == 'lab'
     assert [d['id'] for d in again['destinations']] == \
-        [d['id'] for d in original['destinations']]
-    assert wp.find(again, 'bep')['pose'] == {'x': 1.5, 'y': -0.25, 'yaw': 1.571}
+        [d['id'] for d in original['destinations']]  # station ids stay "A".."D"
+    assert wp.find(again, 'B')['pose'] == {'x': 1.5, 'y': -0.25, 'yaw': 1.571}
+    assert 'bếp' in wp.find(again, 'B')['aliases']
 
 
 def test_file_with_poses_still_works_for_voice(tmp_path):
@@ -85,6 +86,7 @@ def test_file_with_poses_still_works_for_voice(tmp_path):
     loaded = yaml.safe_load(path.read_text(encoding='utf-8'))
     dests = load_destinations(loaded)
     assert parse_utterance('mang đồ ra chỗ tủ lạnh', dests).destination == 'tu_lanh'
+    assert parse_utterance('từ trạm A mang đến tủ lạnh', dests).source == 'A'
     assert 'đi đến tủ lạnh' in vocab.vosk_grammar(loaded)
 
 

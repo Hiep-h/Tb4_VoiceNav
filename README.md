@@ -9,7 +9,7 @@ Muốn chạy từ đầu (vẽ map, đánh dấu điểm đến, cho robot đi)
 [Từ vẽ map đến lúc robot đi](#từ-vẽ-map-đến-lúc-robot-đi-làm-theo-thứ-tự).
 
 ```
-Micro → VAD → nhận dạng (Google, Whisper dự phòng | Vosk) → /speech_text → bộ hiểu lệnh → /voice_command
+Micro → VAD → nhận dạng (Google, Whisper dự phòng | Vosk) → /speech_text → bộ hiểu lệnh → /voice/intent
 OAK-D RGB + depth → YOLOv8n (người) + khoảng cách + góc ──────────────────→ /person_detections
 ```
 
@@ -17,7 +17,7 @@ OAK-D RGB + depth → YOLOv8n (người) + khoảng cách + góc ─────
 
 ```
 voice_person_perception/            package ROS 2 (ament_python)
-├── config/destinations.yaml        điểm đến, cách nói khác và vị trí trên map (dùng chung)
+├── config/destinations.yaml        trạm A-D, cách gọi khác và vị trí trên map (dùng chung)
 ├── config/eval_phrases.yaml        câu thử cho eval_voice
 ├── launch/perception.launch.py     chạy thật: micro + camera
 ├── launch/fake.launch.py           giả lập cho bên thực thi test khi chưa có robot
@@ -235,15 +235,15 @@ ros2 run voice_person_perception waypoint_marker --ros-args -p file:=$DEST -p ma
    rồi gõ tên ở T5:
 
    ```
-   > bếp
+   > trạm B
      Vị trí: x=1.50 y=-0.25 hướng=90°
-     id (không dấu) [bep]:
-     Thêm bí danh, cách nhau dấu phẩy (đang có: nhà bếp, chỗ nấu ăn, khu bếp): chỗ tủ lạnh
-     -> đã cập nhật bep
+     id (không dấu) [B]:
+     Thêm bí danh, cách nhau dấu phẩy (đang có: điểm B, vị trí B, trạm bê, ...): bếp, chỗ tủ lạnh
+     -> đã cập nhật B
    ```
 
-   Mũi tên mới hiện ngay trên RViz. Đồ vật cũng làm như vậy: đứng cạnh tủ lạnh, gõ `tủ lạnh`
-   (thành điểm riêng), hoặc thêm `tủ lạnh` làm bí danh của `bep`.
+   Mũi tên mới hiện ngay trên RViz. Thêm tên chỗ thật của trạm làm bí danh (vd. `bếp` cho trạm
+   B) để nói "mang đến bếp" cũng hiểu là trạm B.
 4. Gõ `q` ở T5. Công cụ báo điểm nào còn thiếu vị trí.
 
 ### Bước 2. Lưu map (khi SLAM vẫn đang chạy)
@@ -271,29 +271,29 @@ và chọn ghi đè.
 ### Bước 4. Thử cho robot đi tới một điểm (chưa cần giọng nói)
 
 ```bash
-ros2 run voice_person_perception nav_goal_cmd bep --file $DEST     # in lệnh, bỏ `bep` để in tất cả
+ros2 run voice_person_perception nav_goal_cmd B --file $DEST       # in lệnh, bỏ `B` để in tất cả
 ```
 
-Chép lệnh `ros2 action send_goal ...` nó in ra, chạy là robot tự đi tới bếp bằng Nav2. Làm
+Chép lệnh `ros2 action send_goal ...` nó in ra, chạy là robot tự đi tới trạm B bằng Nav2. Làm
 lần lượt mọi điểm để chắc đường đi được trước khi ghép giọng nói.
 
 ### Bước 5. Ra lệnh bằng giọng nói
 
 ```bash
 ros2 launch voice_person_perception perception.launch.py destinations_file:=$DEST   # T7
-ros2 topic echo /voice_command                                      # T8: xem lệnh đã hiểu
+ros2 topic echo /voice/intent                                       # T8: xem lệnh đã hiểu
 ```
 
-Nói "mang đồ đến bếp" sẽ ra `"intent": "GO_TO", "destination": "bep"`. Node thực thi (phần của
-bạn làm thực thi) nhận `/voice_command`, tra `pose` của `bep` trong cùng `destinations.yaml` rồi
-gửi `NavigateToPose` như bước 4; dừng/hủy, hỏi lại và né người cũng ở node đó. Định dạng xem
-[INTERFACE.md](INTERFACE.md).
+Nói "mang hàng từ trạm A đến trạm B" sẽ ra `"intent": "CREATE_DELIVERY", "source_station": "A",
+"destination_station": "B"`. Mission Manager nhận `/voice/intent`, kiểm tra quyền rồi nhờ
+Navigation Client tra `pose` của trạm trong cùng `destinations.yaml` và gửi `NavigateToPose` như
+bước 4. Định dạng và 6 loại lệnh xem [INTERFACE.md](INTERFACE.md).
 
 ### Lệnh trong `waypoint_marker`
 
 | Gõ | Tác dụng |
 |---|---|
-| tên (vd. `bếp`) | Lưu vị trí robot cho điểm đó. Tên hoặc bí danh đã có thì cập nhật điểm cũ (gõ `nhà bếp` là sửa `bep`); tên mới thì thêm điểm, `id` tự sinh không dấu (`phòng họp` thành `phong_hop`) |
+| tên (vd. `trạm B`, `B`) | Lưu vị trí robot cho trạm đó. Tên, mã hoặc bí danh đã có thì cập nhật trạm cũ (gõ `bếp` là sửa trạm có bí danh `bếp`); tên mới thì thêm điểm, `id` tự sinh không dấu (`phòng họp` thành `phong_hop`) |
 | `p` | Lần lưu tới dùng điểm bấm bằng nút **Publish Point** trên RViz thay vì vị trí robot |
 | `l` | Liệt kê các điểm |
 | `d <id>` | Xóa một điểm |
@@ -348,7 +348,7 @@ ros2 launch voice_person_perception record_bag.launch.py           # tên theo n
 ros2 launch voice_person_perception record_bag.launch.py name:=nguoi_chan_duong
 ```
 
-Mặc định thu 3 topic nhỏ: `/speech_text`, `/voice_command`, `/person_detections`. Nhấn `Ctrl+C`
+Mặc định thu 3 topic nhỏ: `/speech_text`, `/voice/intent`, `/person_detections`. Nhấn `Ctrl+C`
 để dừng, bag nằm trong `bags/<tên>/`. Kiểm tra bằng `ros2 bag info bags/<tên>`.
 
 Thu thêm ảnh RGB/depth để test lại bộ nhận diện người offline (rất nặng, vài MB mỗi giây,

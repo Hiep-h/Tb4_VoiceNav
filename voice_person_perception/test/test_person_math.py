@@ -85,10 +85,15 @@ def test_image_decode_rgb_to_bgr_and_depth_with_padding():
 
 
 def test_contract_roundtrip_is_valid_json_with_vietnamese():
-    cmd = contract.make_voice_command(3, 12.34567, 'đến bếp', 'GO_TO', 'bep', 0.91234,
-                                      False, [{'destination': 'bep', 'score': 1.0}])
+    cmd = contract.make_voice_intent('voice-1-0003', 12.34567, 'từ trạm A đến bếp',
+                                     'CREATE_DELIVERY', 'A', 'B', 0.91234, False,
+                                     [{'station': 'B', 'score': 1.0}])
     back = json.loads(contract.dumps(cmd))
-    assert back['text'] == 'đến bếp' and back['v'] == 1 and back['confidence'] == 0.912
+    assert back['text'] == 'từ trạm A đến bếp' and back['confidence'] == 0.912
+    # the six fields of the team contract, in order
+    assert list(back)[:6] == ['request_id', 'intent', 'source_station', 'destination_station',
+                              'confidence', 'input_channel']
+    assert back['input_channel'] == 'VOICE'
     msg = contract.make_person_message(1.0, [contract.make_person(2, None, 3.14159, 0.876, True)],
                                        True, 0.0312)
     back = json.loads(contract.dumps(msg))

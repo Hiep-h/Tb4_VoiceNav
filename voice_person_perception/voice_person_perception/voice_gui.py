@@ -74,7 +74,7 @@ class VoiceGui(Node):
         self.listen_pub = self.create_publisher(Bool, contract.ASR_LISTEN_TOPIC, 10)
         self.create_subscription(String, contract.ASR_STATUS_TOPIC, self._on_status, 10)
         self.create_subscription(String, contract.SPEECH_TEXT_TOPIC, self._on_speech, 10)
-        self.create_subscription(String, contract.VOICE_COMMAND_TOPIC, self._on_command, 10)
+        self.create_subscription(String, contract.VOICE_INTENT_TOPIC, self._on_command, 10)
         self.create_subscription(String, contract.PERSON_TOPIC, self._on_persons, 10)
 
     # ---- subscriptions (executor thread)
@@ -91,9 +91,10 @@ class VoiceGui(Node):
         cmd = _parse(msg.data)
         with self.lock:
             self.command = cmd
-            if cmd.get('intent') == contract.INTENT_GO_TO:
-                self.target = cmd.get('destination')
-            elif cmd.get('intent') in (contract.INTENT_STOP, contract.INTENT_CANCEL):
+            if (cmd.get('intent') in contract.STATION_INTENTS
+                    and cmd.get('destination_station')):
+                self.target = cmd.get('destination_station')
+            elif cmd.get('intent') == contract.INTENT_CANCEL:
                 self.target = None
 
     def _on_persons(self, msg):

@@ -1,7 +1,12 @@
-"""/speech_text -> /voice_command (intent + destination, one message per command)."""
+"""/speech_text -> /voice/intent (team contract, docs/interfaces.md section 2).
+
+One message per command, each with its own request_id. The same command heard
+twice within dedupe_window_s is sent once.
+"""
 
 import json
 import os
+import time
 
 import rclpy
 import yaml
@@ -35,6 +40,9 @@ class IntentResolverNode(Node):
         self.declare_parameter('margin', 0.10)
         self.declare_parameter('min_asr_conf', 0.6)
         self.declare_parameter('dedupe_window_s', 1.5)
+        # UNKNOWN is not in the team contract; on by default so the GUI/robot can
+        # say "không hiểu". Mission Manager should ignore it (or answer INVALID).
+        self.declare_parameter('publish_unknown', True)
 
         path = self.get_parameter('destinations_file').value
         if path in ('', 'auto'):
@@ -45,8 +53,9 @@ class IntentResolverNode(Node):
             f'Đã nạp {len(self._destinations)} điểm đến từ {os.path.abspath(path)}')
 
         self._seq = 0
-        self._last = (None, None, -1e9)
-        self._pub = self.create_publisher(String, contract.VOICE_COMMAND_TOPIC, 10)
+        self._session = time.strftime('%H%M%S')  # keeps request_id unique across restarts
+        self._last = (None, None, None, -1e9)
+        self._pub = self.create_publisher(String, contract.VOICE_INTENT_TOPIC, 10)
         self.create_subscription(String, contract.SPEECH_TEXT_TOPIC, self._on_text, 10)
 
     def _on_text(self, msg):
@@ -64,22 +73,28 @@ class IntentResolverNode(Node):
             accept=p('accept').value, confident=p('confident').value,
             margin=p('margin').value, min_asr_conf=p('min_asr_conf').value)
 
-        now = self.get_clock().now().nanoseconds * 1e-9
-        last_intent, last_dest, last_time = self._last
-        if (result.intent == last_intent and result.destination == last_dest
-                and now - last_time < p('dedupe_window_s').value):
+        if result.intent == contract.INTENT_UNKNOWN and not p('publish_unknown').value:
+            self.get_logger().info(f'"{text}" -> không phải lệnh, bỏ qua')
             return
-        self._last = (result.intent, result.destination, now)
+        now = self.get_clock().now().nanoseconds * 1e-9
+        key = (result.intent, result.source, result.destination)
+        if key == self._last[:3] and now - self._last[3] < p('dedupe_window_s').value:
+            return
+        self._last = key + (now,)
 
         self._seq += 1
+        request_id = f'voice-{self._session}-{self._seq:04d}'
         out = String()
-        out.data = contract.dumps(contract.make_voice_command(
-            self._seq, now, text, result.intent, result.destination,
+        out.data = contract.dumps(contract.make_voice_intent(
+            request_id, now, text, result.intent, result.source, result.destination,
             result.confidence, result.needs_confirm, result.candidates))
         self._pub.publish(out)
+        route = ''
+        if result.source or result.destination:
+            route = f" {result.source or '?'} -> {result.destination or '?'}"
         self.get_logger().info(
-            f'"{text}" -> {result.intent} {result.destination or ""} '
-            f'(conf {result.confidence:.2f}, confirm={result.needs_confirm})')
+            f'"{text}" -> {result.intent}{route} '
+            f'(conf {result.confidence:.2f}, xác nhận={result.needs_confirm}, {request_id})')
 
 
 def main(args=None):

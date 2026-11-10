@@ -87,26 +87,37 @@ BUTTON_LOOK = {
 
 
 def describe_command(cmd, names=None):
-    """(text, colour) for a /voice_command dict; names maps id -> spoken name."""
+    """(text, colour) for a /voice/intent dict; names maps station id -> spoken name."""
     if not cmd:
         return 'Chưa có lệnh', GREY
     names = names or {}
     intent = cmd.get('intent')
-    dest = cmd.get('destination')
-    name = names.get(dest, dest)
-    if intent == contract.INTENT_GO_TO:
-        if cmd.get('needs_confirm'):
-            others = [names.get(c.get('destination'), c.get('destination'))
+    src, dst = cmd.get('source_station'), cmd.get('destination_station')
+    src_name, dst_name = names.get(src, src), names.get(dst, dst)
+    ask = cmd.get('needs_confirm')
+    if intent == contract.INTENT_CREATE_DELIVERY:
+        if dst is None:
+            return f'Lấy hàng ở {src_name}, giao đến đâu? Cần xác nhận', AMBER
+        route = f'{src_name} → {dst_name}' if src else f'đến {dst_name}'
+        if ask:
+            others = [names.get(c.get('station'), c.get('station'))
                       for c in cmd.get('candidates', [])
-                      if isinstance(c, dict) and c.get('destination') not in (None, dest)][:2]
+                      if isinstance(c, dict) and c.get('station') not in (None, src, dst)][:2]
             extra = f" (hoặc {', '.join(others)}?)" if others else ''
-            return f'Đi đến {name}? Cần xác nhận{extra}', AMBER
-        return f'Đi đến: {name}', GREEN
-    if intent == contract.INTENT_STOP:
-        return 'DỪNG LẠI', RED
+            return f'Giao hàng {route}? Cần xác nhận{extra}', AMBER
+        return f'Giao hàng {route}', GREEN
+    if intent == contract.INTENT_CHANGE_DESTINATION:
+        return (f'Đổi đích sang {dst_name}' + ('? Cần xác nhận' if ask else ''),
+                AMBER if ask else GREEN)
+    if intent == contract.INTENT_PAUSE:
+        return 'TẠM DỪNG', RED
+    if intent == contract.INTENT_RESUME:
+        return 'Tiếp tục', GREEN
     if intent == contract.INTENT_CANCEL:
-        return 'Hủy lệnh', AMBER
-    return 'Không hiểu lệnh (không có điểm đến này)', GREY
+        return 'Hủy đơn', AMBER
+    if intent == contract.INTENT_GET_STATUS:
+        return 'Hỏi trạng thái đơn hàng', BLUE
+    return 'Không hiểu lệnh (không có trạm này?)', GREY
 
 
 def side(bearing):
@@ -367,7 +378,7 @@ def render_radar_panel(persons_msg, destinations=(), target=None, height=PANEL_H
         d.ellipse([px - 9, py - 9, px + 9, py + 9], fill=c, outline=(255, 255, 255))
         d.text((px + 11, py - 8), f"{p['distance_m']:.1f} m", font=font(13, True), fill=c)
     y = RADAR_W + 6
-    d.text((14, y), 'Điểm đến:', font=font(15, True), fill=DARK)
+    d.text((14, y), 'Trạm:', font=font(15, True), fill=DARK)
     y += 22
     names = [(i['id'], i.get('name', i['id'])) for i in destinations]
     line = ''
