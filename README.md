@@ -11,6 +11,9 @@ Module HRI của dự án robot giao hàng TurtleBot 4 (`tb4-hri-delivery`, thư
 
 Định dạng message chi tiết: [INTERFACE.md](INTERFACE.md).
 
+Repo này còn package **`navigation_client`** (mã trạm → Nav2 `/navigate_to_pose`, kèm Nav2 giả để
+thử không cần robot): xem [navigation_client/README.md](navigation_client/README.md).
+
 Muốn chạy từ đầu (vẽ map, đánh dấu điểm đến, cho robot đi): xem
 [Từ vẽ map đến lúc robot đi](#từ-vẽ-map-đến-lúc-robot-đi-làm-theo-thứ-tự).
 
@@ -282,6 +285,10 @@ và chọn ghi đè.
 ros2 run voice_person_perception nav_goal_cmd B --file $DEST       # in lệnh, bỏ `B` để in tất cả
 ```
 
+Hoặc qua Navigation Client (đúng đường Mission Manager sẽ dùng):
+`ros2 launch navigation_client navigation_client.launch.py stations_file:=$DEST` rồi
+`ros2 run navigation_client nav_cmd go B`.
+
 Chép lệnh `ros2 action send_goal ...` nó in ra, chạy là robot tự đi tới trạm B bằng Nav2. Làm
 lần lượt mọi điểm để chắc đường đi được trước khi ghép giọng nói.
 
@@ -410,6 +417,9 @@ rm -rf $DST && cp -r $SRC/voice_person_perception $DST
 find $DST -name __pycache__ -prune -exec rm -rf {} +
 mkdir -p $DST/docs && cp $SRC/docs/* $DST/docs/
 cp $SRC/README.md $SRC/INTERFACE.md $SRC/requirements.txt $DST/ && cp -r $SRC/scripts $DST/
+# Navigation Client -> src/navigation_client (nhánh riêng feature/navigation-client, issue NAV-01)
+rm -rf src/navigation_client && cp -r $SRC/navigation_client src/navigation_client
+find src/navigation_client -name __pycache__ -prune -exec rm -rf {} +
 git add src/voice_interaction && git commit -m "feat: ..." && git push
 ```
 
