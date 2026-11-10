@@ -352,8 +352,12 @@ def render_map_panel(mapview, destinations, robot=None, persons=None, target=Non
                 if p.get('distance_m') is None:
                     continue
                 qx, qy = mapview.to_px(*person_world(robot, p))
-                c = RED if p.get('approaching') else (240, 130, 30)
-                d.ellipse([qx - 7, qy - 7, qx + 7, qy + 7], fill=c, outline=(255, 255, 255))
+                c = RED if p.get('approaching') or p['distance_m'] < 1.0 else (240, 130, 30)
+                rx, ry = mapview.to_px(robot[0], robot[1])
+                d.line([rx, ry, qx, qy], fill=c, width=1)
+                d.ellipse([qx - 8, qy - 8, qx + 8, qy + 8], fill=c, outline=(255, 255, 255))
+                label = f"{p['distance_m']:.1f} m" + (' ←' if p.get('approaching') else '')
+                d.text((qx + 10, qy - 9), label, font=font(14, True), fill=c)
         px, py = mapview.to_px(robot[0], robot[1])
         d.ellipse([px - 10, py - 10, px + 10, py + 10], fill=BLUE, outline=(255, 255, 255))
         _arrow(d, px, py, robot[2], 22, BLUE)
