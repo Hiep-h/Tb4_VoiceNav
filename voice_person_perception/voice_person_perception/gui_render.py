@@ -157,6 +157,43 @@ def backend_line(status):
     return line
 
 
+NAV_REASONS = {
+    'UNKNOWN_STATION': 'không có trạm này',
+    'NO_POSE': 'trạm chưa đánh dấu trên map',
+    'NAV2_UNAVAILABLE': 'Nav2 chưa chạy',
+    'GOAL_REJECTED': 'Nav2 từ chối',
+    'NAV2_ABORTED': 'bị chặn hoặc không tìm được đường',
+    'TIMEOUT': 'đi quá lâu',
+}
+
+
+def describe_nav(nav, names=None, age_s=None, stale_s=3.0):
+    """(text, colour) for a /navigation/status dict, or None when no client runs."""
+    if nav is None:
+        return None
+    if age_s is not None and age_s > stale_s:
+        return 'Robot: mất kết nối Navigation Client', RED
+    names = names or {}
+    station = nav.get('station_id')
+    name = names.get(station, station or '?')
+    state = nav.get('state')
+    if state == 'MOVING':
+        text = f'Robot: đang đến {name}'
+        if nav.get('distance_remaining_m') is not None:
+            text += f", còn {nav['distance_remaining_m']:.1f} m"
+            if nav.get('eta_s'):
+                text += f" (~{nav['eta_s']:.0f} s)"
+        return text, BLUE
+    if state == 'SUCCEEDED':
+        return f'Robot: đã tới {name}', GREEN
+    if state == 'CANCELED':
+        return f'Robot: đã hủy đường đến {name}', AMBER
+    if state == 'FAILED':
+        reason = NAV_REASONS.get(nav.get('reason'), nav.get('reason') or 'lỗi')
+        return f'Robot: không tới được {name} ({reason})', RED
+    return 'Robot: đang chờ lệnh', GREY
+
+
 # ---------------------------------------------------------------- left panel
 
 def render_voice_panel(view, t=0.0, height=PANEL_H):
@@ -220,6 +257,12 @@ def render_voice_panel(view, t=0.0, height=PANEL_H):
         d.text((20, y), line, font=font(22, True), fill=cmd_colour)
         y += 28
 
+    nav = describe_nav(view.get('nav'), view.get('names'), view.get('nav_age'))
+    if nav is not None:
+        ny = max(y + 6, height - 124)
+        d.text((20, ny), wrap(d, nav[0], font(17, True), PANEL_W - 40)[0],
+               font=font(17, True), fill=nav[1])
+        y = ny + 24
     y = max(y + 10, height - 92)
     d.line([16, y, PANEL_W - 16, y], fill=(215, 218, 225), width=1)
     p_text, p_colour = describe_persons(view.get('persons'), view.get('persons_age'))
@@ -326,13 +369,40 @@ def _with_legend(img):
     d = ImageDraw.Draw(out)
     y = img.size[1] + 10
     x = 12
-    for colour, label in ((BLUE, 'robot'), ((30, 110, 220), 'điểm đến'),
+    for colour, label in ((BLUE, 'robot'), ((30, 110, 220), 'trạm'),
                           (GREEN, 'đang tới'), ((240, 130, 30), 'người'),
                           (RED, 'người đang tiến lại')):
         d.ellipse([x, y + 3, x + 12, y + 15], fill=colour)
         d.text((x + 17, y), label, font=font(13), fill=DARK)
         x += 30 + text_w(d, label, font(13))
     return out
+
+
+def plan_view(destinations, robot=None, margin_m=1.5, res=0.02, max_w=700, max_h=PANEL_H - 40):
+    """A MapView over an empty grid that fits every station (and the robot),
+    for when there is no saved map yet (e.g. with the fake Nav2 server).
+    None when no station has a pose."""
+    pts = [(i['pose']['x'], i['pose']['y']) for i in destinations if i.get('pose')]
+    if not pts:
+        return None
+    if robot is not None:
+        pts.append((robot[0], robot[1]))
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    x0, y0 = min(xs) - margin_m, min(ys) - margin_m
+    w_m = max(max(xs) - x0 + margin_m, 3.0)
+    h_m = max(max(ys) - y0 + margin_m, 3.0)
+    size = (max(1, int(w_m / res)), max(1, int(h_m / res)))
+    mv = MapView(Image.new('L', size, 252), res, (x0, y0), max_w=max_w, max_h=max_h)
+    d = ImageDraw.Draw(mv.base)
+    for gx in range(math.ceil(x0), math.floor(x0 + w_m) + 1):
+        px, _ = mv.to_px(gx, 0)
+        d.line([px, 0, px, mv.base.size[1]], fill=(225, 228, 235) if gx else (190, 195, 205))
+    for gy in range(math.ceil(y0), math.floor(y0 + h_m) + 1):
+        _, py = mv.to_px(0, gy)
+        d.line([0, py, mv.base.size[0], py], fill=(225, 228, 235) if gy else (190, 195, 205))
+    d.text((8, mv.base.size[1] - 20), 'Sơ đồ trạm (chưa có map), ô lưới 1 m',
+           font=font(13), fill=GREY)
+    return mv
 
 
 # ---------------------------------------------------------------- radar panel

@@ -79,8 +79,15 @@ Thử lỗi: `go E` (UNKNOWN_STATION), trạm chưa có `pose` (NO_POSE), tắt 
 `ros2 run navigation_client navigation_client --ros-args -p stations_file:=$DEST`
 (NAV2_UNAVAILABLE), hoặc `fake_nav2_server` với `-p fail_after_s:=3.0` (NAV2_ABORTED).
 
-Xem robot giả chạy trên giao diện: `ros2 run voice_person_perception voice_gui --ros-args
--p map_yaml:=<map.yaml> -p destinations_file:=$DEST` (cần một map bất kỳ để vẽ).
+**Xem trên giao diện:** thêm `gui:=true` để mở `voice_gui`:
+
+```bash
+ros2 launch navigation_client navigation_client.launch.py stations_file:=$DEST sim:=true gui:=true
+```
+
+Bên phải là sơ đồ các trạm (lưới 1 m, khi chưa có map) với robot giả chạy trên đó, trạm đang tới
+tô xanh lá; bên trái có dòng "Robot: đang đến trạm B, còn 1.8 m (~4 s)", "đã tới", "không tới
+được (lý do)". Có map thì thêm `map_yaml:=` cho `voice_gui` để vẽ trên map thật.
 
 ## Chạy với robot thật
 

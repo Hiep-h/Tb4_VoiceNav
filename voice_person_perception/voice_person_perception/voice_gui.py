@@ -46,6 +46,10 @@ class VoiceGui(Node):
         self.declare_parameter('destinations_file', 'auto')
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('base_frame', 'base_link')
+        self.declare_parameter('nav_status_topic', '/navigation/status')
+        # right side: auto = map if map_yaml, else station plan when the robot pose
+        # is known (TF), else people radar; or force map / plan / radar
+        self.declare_parameter('right_panel', 'auto')
         get = lambda name: self.get_parameter(name).value  # noqa: E731
         path = get('destinations_file')
         self.dest_path = _default_destinations_file() if path in ('', 'auto') else path
@@ -59,6 +63,9 @@ class VoiceGui(Node):
         self.target = None
         self.persons = None
         self.persons_at = 0.0
+        self.nav = None
+        self.nav_at = 0.0
+        self.right_panel = get('right_panel')
         self.destinations, self.names, self._dest_mtime = [], {}, None
         self._reload_destinations()
 
@@ -66,16 +73,20 @@ class VoiceGui(Node):
         if get('map_yaml') not in ('', 'none'):
             image, res, origin = gr.load_map(get('map_yaml'))
             self.mapview = gr.MapView(image, res, origin)
+            self.get_logger().info(f"Bản đồ {get('map_yaml')}")
+        try:  # robot pose map -> base_link (AMCL, SLAM or fake_nav2_server)
             from tf2_ros import Buffer, TransformListener
             self.tf_buffer = Buffer()
             self.tf_listener = TransformListener(self.tf_buffer, self)
-            self.get_logger().info(f"Bản đồ {get('map_yaml')}")
+        except ImportError:
+            self.tf_buffer = None
 
         self.listen_pub = self.create_publisher(Bool, contract.ASR_LISTEN_TOPIC, 10)
         self.create_subscription(String, contract.ASR_STATUS_TOPIC, self._on_status, 10)
         self.create_subscription(String, contract.SPEECH_TEXT_TOPIC, self._on_speech, 10)
         self.create_subscription(String, contract.VOICE_INTENT_TOPIC, self._on_command, 10)
         self.create_subscription(String, contract.PERSON_TOPIC, self._on_persons, 10)
+        self.create_subscription(String, get('nav_status_topic'), self._on_nav, 10)
 
     # ---- subscriptions (executor thread)
 
@@ -96,6 +107,10 @@ class VoiceGui(Node):
                 self.target = cmd.get('destination_station')
             elif cmd.get('intent') == contract.INTENT_CANCEL:
                 self.target = None
+
+    def _on_nav(self, msg):
+        with self.lock:
+            self.nav, self.nav_at = _parse(msg.data), time.monotonic()
 
     def _on_persons(self, msg):
         with self.lock:
@@ -121,7 +136,7 @@ class VoiceGui(Node):
         self.names = {d['id']: d.get('name', d['id']) for d in self.destinations}
 
     def robot_pose(self):
-        if self.mapview is None:
+        if self.tf_buffer is None:
             return None
         try:
             tf = self.tf_buffer.lookup_transform(self.map_frame, self.base_frame, Time())
@@ -153,15 +168,26 @@ class VoiceGui(Node):
                 'heard': self.heard, 'command': self.command, 'names': self.names,
                 'persons': self.persons,
                 'persons_age': now - self.persons_at if self.persons else None,
+                'nav': self.nav,
+                'nav_age': now - self.nav_at if self.nav else None,
             }
             target = self.target
+            nav = self.nav
+        if nav and nav.get('state') in ('MOVING', 'SUCCEEDED') and nav.get('station_id'):
+            target = nav['station_id']  # where the robot is really going
         left = gr.render_voice_panel(view, t)
         persons = (view['persons'] or {}).get('persons', [])
         if view['persons_age'] is not None and view['persons_age'] > 1.5:
             persons = []
-        if self.mapview is not None:
-            right = gr.render_map_panel(self.mapview, self.destinations, self.robot_pose(),
-                                        persons, target)
+        robot = self.robot_pose()
+        mode = self.right_panel
+        if mode == 'auto':
+            mode = 'map' if self.mapview else ('plan' if robot is not None else 'radar')
+        mapview = self.mapview if mode == 'map' else None
+        if mode == 'plan':
+            mapview = gr.plan_view(self.destinations, robot)
+        if mapview is not None:
+            right = gr.render_map_panel(mapview, self.destinations, robot, persons, target)
         else:
             right = gr.render_radar_panel({'persons': persons}, self.destinations, target)
         return gr.to_bgr(gr.compose(left, right))

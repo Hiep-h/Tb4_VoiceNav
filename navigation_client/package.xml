@@ -19,6 +19,8 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
+  <!-- only for gui:=true in the launch file -->
+  <exec_depend>voice_person_perception</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

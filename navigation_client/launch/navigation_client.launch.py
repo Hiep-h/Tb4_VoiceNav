@@ -2,6 +2,8 @@
 
     ros2 launch navigation_client navigation_client.launch.py stations_file:=$DEST
     ros2 launch navigation_client navigation_client.launch.py stations_file:=$DEST sim:=true
+    ros2 launch navigation_client navigation_client.launch.py stations_file:=$DEST sim:=true \
+        gui:=true
 """
 
 from launch import LaunchDescription
@@ -19,6 +21,8 @@ def generate_launch_description():
         DeclareLaunchArgument('sim', default_value='false',
                               description='Chạy Nav2 giả (fake_nav2_server) thay robot thật'),
         DeclareLaunchArgument('speed', default_value='0.4', description='Tốc độ robot giả (m/s)'),
+        DeclareLaunchArgument('gui', default_value='false',
+                              description='Mở voice_gui (sơ đồ trạm, robot, trạng thái đi)'),
         DeclareLaunchArgument('goal_timeout_s', default_value='0.0',
                               description='Hủy và báo FAILED nếu đi quá lâu; 0 = không giới hạn'),
         Node(package='navigation_client', executable='fake_nav2_server', name='fake_nav2_server',
@@ -29,4 +33,7 @@ def generate_launch_description():
                  'stations_file': LaunchConfiguration('stations_file'),
                  'goal_timeout_s': LaunchConfiguration('goal_timeout_s'),
              }]),
+        Node(package='voice_person_perception', executable='voice_gui', name='voice_gui',
+             output='screen', condition=IfCondition(LaunchConfiguration('gui')),
+             parameters=[{'destinations_file': LaunchConfiguration('stations_file')}]),
     ])

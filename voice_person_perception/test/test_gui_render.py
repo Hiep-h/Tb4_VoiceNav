@@ -105,3 +105,29 @@ def test_panels_render_every_state(state, tmp_path):
 def test_inside_button():
     assert gr.inside_button(gr.BTN_CX, gr.BTN_CY)
     assert not gr.inside_button(0, 0)
+
+
+def test_describe_nav():
+    assert gr.describe_nav(None) is None
+    moving = {'state': 'MOVING', 'station_id': 'B', 'distance_remaining_m': 1.84, 'eta_s': 4.2}
+    assert gr.describe_nav(moving, NAMES) == ('Robot: đang đến trạm B, còn 1.8 m (~4 s)', gr.BLUE)
+    assert gr.describe_nav({'state': 'SUCCEEDED', 'station_id': 'B'}, NAMES)[1] == gr.GREEN
+    failed = {'state': 'FAILED', 'station_id': 'C', 'reason': 'NAV2_UNAVAILABLE'}
+    assert gr.describe_nav(failed, NAMES) == ('Robot: không tới được trạm C (Nav2 chưa chạy)',
+                                              gr.RED)
+    assert gr.describe_nav({'state': 'IDLE'})[0] == 'Robot: đang chờ lệnh'
+    assert gr.describe_nav(moving, NAMES, age_s=10)[0].endswith('mất kết nối Navigation Client')
+
+
+def test_plan_view_fits_stations_and_robot():
+    dests = [{'id': 'A', 'pose': {'x': 0.0, 'y': 0.0, 'yaw': 0.0}},
+             {'id': 'B', 'pose': {'x': 4.0, 'y': 2.0, 'yaw': 0.0}},
+             {'id': 'C'}]
+    assert gr.plan_view([{'id': 'C'}]) is None
+    mv = gr.plan_view(dests, robot=(-3.0, 5.0, 0.0))
+    w, h = mv.base.size
+    for x, y in ((0.0, 0.0), (4.0, 2.0), (-3.0, 5.0)):
+        px, py = mv.to_px(x, y)
+        assert 0 < px < w and 0 < py < h
+    img = gr.render_map_panel(mv, dests, (1.0, 1.0, 0.3), [], 'B')
+    assert img.size[1] >= gr.PANEL_H

@@ -105,8 +105,12 @@ ros2 launch voice_person_perception fake.launch.py gui:=true
 - **Trái:** nút micro (xám: bấm để nói; đỏ: đang nghe; vàng: đang nhận dạng), mức âm lượng so với
   ngưỡng (vạch đen), câu vừa nghe, lệnh robot hiểu (xanh: đi luôn; vàng: cần xác nhận; đỏ: dừng),
   tóm tắt người phía trước, bộ nhận dạng đang dùng.
-- **Phải:** có `map_yaml` thì là bản đồ với điểm đến (xanh lá: đang tới), robot và người (cần
-  SLAM/AMCL để có vị trí robot); không có thì là radar người quanh robot (0,5 / 1 / 2 / 3 m).
+- **Phải:** có `map_yaml` thì là bản đồ với các trạm (xanh lá: đang tới), robot và người; chưa
+  có map nhưng biết vị trí robot (TF từ AMCL/SLAM hoặc Nav2 giả) thì là sơ đồ trạm trên lưới 1 m;
+  không có cả hai thì là radar người quanh robot (0,5 / 1 / 2 / 3 m). Ép kiểu bằng
+  `-p right_panel:=map|plan|radar`.
+- Nếu `navigation_client` đang chạy, bên trái có thêm dòng trạng thái robot ("đang đến trạm B,
+  còn 1.8 m", "đã tới", "không tới được ...").
 - Bấm nút hoặc phím **Space** rồi nói một câu. Câu kết thúc khi im 1,5 s (`ptt_end_silence_ms`),
   hoặc **bấm lần nữa để gửi ngay**; bấm lại khi chưa nói gì là hủy. **Q** để đóng. Không có
   `push_to_talk:=true` thì micro nghe liên tục (câu kết thúc khi im 0,7 s, `end_silence_ms`) và
