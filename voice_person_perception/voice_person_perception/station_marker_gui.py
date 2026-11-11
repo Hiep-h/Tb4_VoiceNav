@@ -173,6 +173,12 @@ class StationMarkerGui(Node):
     def save_map(self):
         if self.saving_map:
             return
+        with self.lock:
+            have_map = self.grid is not None
+        if not have_map:
+            self.say('Chưa có map để lưu: không nhận được /map. Lưu map cần SLAM đang chạy '
+                     '(slam.launch.py); robot giả không vẽ map.', gr.RED)
+            return
         os.makedirs(self.maps_dir, exist_ok=True)
         target = os.path.join(self.maps_dir, self.map_name or 'map')
         self.saving_map = True
@@ -187,9 +193,8 @@ class StationMarkerGui(Node):
                     self.say(f'Đã lưu map: {target}.yaml và .pgm. Lần sau chạy '
                              f'localization.launch.py map:={target}.yaml', gr.GREEN)
                 else:
-                    tail = (done.stderr or done.stdout).strip().splitlines()[-1:]
-                    self.say('Lưu map lỗi: ' + (tail[0] if tail else f'mã {done.returncode}'),
-                             gr.RED)
+                    reason = sg.saver_error(done.stdout + done.stderr, done.returncode)
+                    self.say('Lưu map lỗi: ' + reason, gr.RED)
             except Exception as exc:  # noqa: BLE001
                 self.say(f'Lưu map lỗi: {exc}', gr.RED)
             finally:

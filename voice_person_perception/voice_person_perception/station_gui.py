@@ -80,6 +80,16 @@ def drag_yaw(start, end, min_m=0.15):
     return math.atan2(dy, dx)
 
 
+def saver_error(output, code):
+    """The useful line of map_saver_cli's output (it ends with '[INFO] Destroying')."""
+    lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
+    for word in ('ERROR', 'Failed', 'failed', 'timeout', 'Timeout', 'WARN'):
+        for line in lines:
+            if word in line:
+                return line.split(']')[-1].lstrip(': ').strip() or line
+    return f'map_saver_cli kết thúc với mã {code}'
+
+
 def station_line(item):
     pose = item.get('pose')
     if not pose:

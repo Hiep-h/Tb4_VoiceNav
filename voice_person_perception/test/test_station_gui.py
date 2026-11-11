@@ -82,3 +82,11 @@ def test_render(pick, saving):
     assert sg.render_right(None, STATIONS, None, 'B').size == (sg.MAP_W, sg.PANEL_H)
     frame = gr.to_bgr(sg.compose(left, right))
     assert frame.shape[1] == sg.PANEL_W + right.size[0]
+
+
+def test_saver_error_picks_the_useful_line():
+    out = ('[INFO] [1.0] [map_saver]: Saving map from map topic\n'
+           '[WARN] [2.0] [map_saver]: Failed to spin map subscription\n'
+           '[INFO] [3.0] [map_saver]: Destroying\n')
+    assert sg.saver_error(out, 1) == 'Failed to spin map subscription'
+    assert sg.saver_error('[INFO] x: Destroying', 1) == 'map_saver_cli kết thúc với mã 1'
