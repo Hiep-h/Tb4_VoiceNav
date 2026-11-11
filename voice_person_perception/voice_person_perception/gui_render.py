@@ -315,6 +315,12 @@ class MapView:
         py = (self.h - (y - self.origin[1]) / self.res) * self.scale
         return px, py
 
+    def to_world(self, px, py):
+        """Inverse of to_px: panel pixel -> map metres."""
+        x = px / self.scale * self.res + self.origin[0]
+        y = (self.h - py / self.scale) * self.res + self.origin[1]
+        return x, y
+
 
 def person_world(robot, person):
     """Map position of a person seen at (distance, bearing) from robot (x, y, yaw)."""
@@ -331,7 +337,12 @@ def _arrow(d, px, py, yaw, length, colour, width=3):
                fill=colour, width=width)
 
 
-def render_map_panel(mapview, destinations, robot=None, persons=None, target=None):
+MAP_LEGEND = ((BLUE, 'robot'), ((30, 110, 220), 'trạm'), (GREEN, 'đang tới'),
+              ((240, 130, 30), 'người'), (RED, 'người đang tiến lại'))
+
+
+def render_map_panel(mapview, destinations, robot=None, persons=None, target=None,
+                     legend=MAP_LEGEND):
     img = mapview.base.copy()
     d = ImageDraw.Draw(img)
     for item in destinations:
@@ -363,19 +374,17 @@ def render_map_panel(mapview, destinations, robot=None, persons=None, target=Non
         _arrow(d, px, py, robot[2], 22, BLUE)
     else:
         d.text((10, 8), 'Chưa có vị trí robot (cần SLAM/AMCL)', font=font(14, True), fill=RED)
-    return _with_legend(img)
+    return _with_legend(img, legend)
 
 
-def _with_legend(img):
+def _with_legend(img, legend=MAP_LEGEND):
     """Map image plus a strip below it explaining the symbols."""
     out = Image.new('RGB', (img.size[0], max(img.size[1] + 34, PANEL_H)), BG)
     out.paste(img, (0, 0))
     d = ImageDraw.Draw(out)
     y = img.size[1] + 10
     x = 12
-    for colour, label in ((BLUE, 'robot'), ((30, 110, 220), 'trạm'),
-                          (GREEN, 'đang tới'), ((240, 130, 30), 'người'),
-                          (RED, 'người đang tiến lại')):
+    for colour, label in legend:
         d.ellipse([x, y + 3, x + 12, y + 15], fill=colour)
         d.text((x + 17, y), label, font=font(13), fill=DARK)
         x += 30 + text_w(d, label, font(13))

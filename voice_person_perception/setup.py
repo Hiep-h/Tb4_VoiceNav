@@ -35,6 +35,7 @@ setup(
             'voice_gui = voice_person_perception.voice_gui:main',
             'webcam_node = voice_person_perception.webcam_node:main',
             'camera_check = voice_person_perception.camera_check:main',
+            'station_marker_gui = voice_person_perception.station_marker_gui:main',
         ],
     },
 )

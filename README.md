@@ -35,7 +35,8 @@ voice_person_perception/            package ROS 2 (ament_python)
 │   ├── intent.py, vad.py, person_math.py, asr_backends.py   logic thuần, có test
 │   ├── vocab.py, waypoints.py, marker_specs.py              logic thuần, có test
 │   ├── asr_node.py, intent_resolver_node.py, person_detector_node.py
-│   ├── waypoint_marker.py          đánh dấu điểm đến trên map, ghi vào destinations.yaml
+│   ├── station_marker_gui.py, station_gui.py  cửa sổ đánh dấu trạm trên map, lưu map
+│   ├── waypoint_marker.py          đánh dấu điểm đến bằng gõ lệnh, ghi vào destinations.yaml
 │   ├── destination_markers.py      vẽ các điểm đến lên RViz, tự cập nhật khi file đổi
 │   ├── voice_gui.py, gui_render.py giao diện: nút nói, lệnh đã hiểu, bản đồ/radar người
 │   ├── webcam_node.py, person_draw.py  thử nhận diện người bằng webcam, ảnh debug có khung
@@ -240,14 +241,28 @@ ros2 launch turtlebot4_navigation slam.launch.py                     # T1: vẽ 
 ros2 launch turtlebot4_viz view_robot.launch.py                      # T2: RViz
 ros2 run voice_person_perception destination_markers --ros-args -p file:=$DEST   # T3
 ros2 run teleop_twist_keyboard teleop_twist_keyboard                 # T4: lái robot
-ros2 run voice_person_perception waypoint_marker --ros-args -p file:=$DEST -p map_name:=lab  # T5
+ros2 run voice_person_perception station_marker_gui --ros-args -p file:=$DEST -p map_name:=lab  # T5
 ```
+
+T5 mở cửa sổ **đánh dấu trạm** (thay cho gõ lệnh trong `waypoint_marker`, vẫn dùng được):
+
+![station_marker_gui](docs/station_marker_gui.png)
+
+- Bên phải: map đang vẽ (`/map`, tự cập nhật), robot (chấm xanh đậm) và các trạm đã đánh dấu.
+- Bên trái: các trạm A-D (✓ có vị trí / chưa đánh dấu). Bấm vào dòng (hoặc phím A-D) để chọn.
+- **Lưu vị trí robot** (Space): vị trí và hướng hiện tại của robot thành vị trí trạm; tự chuyển
+  sang trạm chưa đánh dấu tiếp theo.
+- **Chọn trên map** (P): bấm vào map để đặt trạm ở đó; giữ chuột và kéo để chọn hướng robot
+  quay mặt khi tới nơi.
+- **Xóa vị trí** (Delete) và **Lưu map** (M: chạy `map_saver_cli` vào `~/maps/<map_name>`).
+- File được lưu sau mỗi lần đổi. Bí danh (tên chỗ thật) sửa trong `destinations.yaml` hoặc
+  bằng `waypoint_marker`. Dùng được cả khi đã có map (chạy cùng `localization.launch.py`).
 
 1. Trong RViz: **Add → By topic → `/destination_markers`** để thấy các điểm (mũi tên xanh + tên).
 2. Lái robot **hết một vòng** khu vực trước cho map ổn định (SLAM có thể nắn lại map khi quay
    về chỗ cũ, làm lệch các điểm đã ghi trước đó).
 3. Lái tới từng chỗ cần giao đồ, **dừng hẳn**, quay mặt robot về hướng muốn đứng khi tới nơi,
-   rồi gõ tên ở T5:
+   rồi bấm **Lưu vị trí robot** trên cửa sổ T5. Nếu dùng `waypoint_marker` thì gõ tên ở T5:
 
    ```
    > trạm B
@@ -262,6 +277,8 @@ ros2 run voice_person_perception waypoint_marker --ros-args -p file:=$DEST -p ma
 4. Gõ `q` ở T5. Công cụ báo điểm nào còn thiếu vị trí.
 
 ### Bước 2. Lưu map (khi SLAM vẫn đang chạy)
+
+Bấm **Lưu map** (M) trên cửa sổ T5, hoặc:
 
 ```bash
 mkdir -p ~/maps && ros2 run nav2_map_server map_saver_cli -f ~/maps/lab
