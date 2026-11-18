@@ -120,6 +120,14 @@ ros2 launch voice_person_perception fake.launch.py gui:=true
   được lưu thành WAV kèm chữ nhận được trong `log.tsv`. Nghe lại: nếu WAV rõ mà chữ sai là lỗi bộ
   nhận dạng; nếu WAV nhỏ, rè, bị cắt là lỗi micro. Câu nói nhỏ được tự khuếch đại (tối đa 8 lần,
   `normalize_audio`).
+- **Chỗ ồn:** hai tùy chọn, mặc định tắt, nên đo bằng `eval_voice` trước khi bật:
+  - `denoise:=true`: khử ồn nền (quạt, máy lạnh, động cơ, tiếng rè) trước khi gửi nhận dạng. Mẫu
+    ồn lấy từ lúc không ai nói (lúc chờ bấm nút). Không khử được giọng người khác nói cùng lúc.
+  - `vad:=webrtc`: tách câu bằng bộ phát hiện giọng người của WebRTC kết hợp độ to, thay cho chỉ
+    đo độ to (`pip install webrtcvad-wheels`). Thử bằng âm thanh tổng hợp chưa thấy hơn cách cũ;
+    cần đo trên giọng thật.
+  - Nhiều người nói cùng lúc: chương trình không tách được giọng. Cách hiệu quả nhất là **tai
+    nghe có micro / micro cài áo** + bấm-để-nói; robot hỏi lại khi nghe không chắc.
 - Câu bị cắt sớm: tăng `ptt_end_silence_ms` (vd. 2000) hoặc giảm `release_ratio` (mặc định 0,6:
   giữa câu, âm to hơn 60% ngưỡng vẫn tính là đang nói). Câu dài tối đa `max_utterance_s` = 10 s.
 - Giao diện chỉ hiển thị và gửi `/asr_listen`; vẫn cần `asr_node`, `intent_resolver_node`.
@@ -139,6 +147,8 @@ Tham số hay chỉnh (`--ros-args -p tên:=giá trị`):
 | | `max_utterance_s` | `10` | Câu dài nhất |
 | | `normalize_audio` | `true` | Khuếch đại câu nói nhỏ trước khi nhận dạng |
 | | `save_audio_dir` | `none` | Lưu từng câu ra WAV + `log.tsv` để nghe lại |
+| | `denoise`, `denoise_strength` | `false`, `1.5` | Khử ồn nền trước khi nhận dạng; strength cao = sạch hơn nhưng giọng "rè nước" hơn |
+| | `vad`, `vad_aggressiveness` | `energy`, `2` | Tách câu: `energy` (độ to) hoặc `webrtc`; aggressiveness 0-3 |
 | | `device_index` | `-1` | Chỉ số micro; xem `python3 -m sounddevice` |
 | | `min_rms` | `250` | Ngưỡng tiếng tối thiểu; ngưỡng thật tự theo tiếng ồn nền |
 | | `vosk_grammar` | `false` | Vosk chỉ nhận câu mẫu sinh từ `destinations.yaml` (xem dưới) |
@@ -357,6 +367,10 @@ ros2 run voice_person_perception eval_voice --backend whisper --whisper-model me
 ros2 run voice_person_perception eval_voice --backend vosk \
     --model-path models/vosk-model-small-vn-0.4 --vosk-grammar --from-dir eval_audio/hiep
 ros2 run voice_person_perception eval_voice --backend whisper --whisper-prompt --from-dir eval_audio/hiep
+# Chỗ ồn: ghi âm ở chỗ ồn (bật quạt, có người nói chuyện), rồi so bật/tắt khử ồn và WebRTC
+ros2 run voice_person_perception eval_voice --backend google --reps 3 --record-dir eval_audio/on_ao
+ros2 run voice_person_perception eval_voice --backend google --denoise --from-dir eval_audio/on_ao
+ros2 run voice_person_perception eval_voice --backend google --vad webrtc --denoise --from-dir eval_audio/on_ao
 ```
 
 Mỗi lần in tỉ lệ đúng, số mẫu theo loại kết quả và thời gian nhận dạng (trung bình, p90), và ghi

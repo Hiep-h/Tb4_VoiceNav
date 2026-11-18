@@ -9,3 +9,4 @@ vosk
 ultralytics
 # Tùy chọn:
 # scipy            # resample chất lượng cao khi micro không hỗ trợ 16 kHz
+webrtcvad-wheels    # vad:=webrtc (tùy chọn)

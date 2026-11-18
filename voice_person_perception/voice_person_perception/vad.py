@@ -1,4 +1,4 @@
-"""Energy-based utterance segmenter and resampling helper (no ROS)."""
+"""Utterance segmenters (energy, WebRTC) and audio helpers (no ROS)."""
 
 from __future__ import annotations
 
@@ -129,7 +129,7 @@ class EnergyVad:
             self._noise_floor = (level if self._noise_floor is None
                                  else 0.8 * self._noise_floor + 0.2 * level)
             return None
-        is_speech = level > self.threshold
+        is_speech = self._is_speech(frame, level, self.threshold)
         if not self._in_speech:
             if not is_speech:
                 self._noise_floor = (level if self._noise_floor is None
@@ -143,13 +143,17 @@ class EnergyVad:
                 self._silence_run = 0
             return None
 
-        is_speech = level > self.threshold * self.release_ratio
+        is_speech = self._is_speech(frame, level, self.threshold * self.release_ratio)
         self._frames.append(frame)
         self._voiced += 1 if is_speech else 0
         self._silence_run = 0 if is_speech else self._silence_run + 1
         if self._silence_run >= self.end_frames or len(self._frames) >= self.max_frames:
             return self._finish()
         return None
+
+    def _is_speech(self, frame, level, threshold):
+        """Is this frame speech? EnergyVad: louder than the threshold."""
+        return level > threshold
 
     def flush(self):
         """End the current utterance now (e.g. button pressed); its audio or None."""
@@ -170,6 +174,44 @@ class EnergyVad:
         self._frames = []
         self._preroll.clear()
         return audio
+
+
+class WebRtcVad(EnergyVad):
+    """EnergyVad that also asks the WebRTC voice detector (webrtcvad).
+
+    A frame is speech only if it sounds like a voice (WebRTC) AND is louder
+    than energy_ratio x the energy threshold. Fans, clicks, music and quiet
+    voices far from the microphone are rejected better than by loudness alone.
+    aggressiveness 0-3: higher rejects more non-speech (and more soft speech).
+    """
+
+    def __init__(self, sample_rate=16000, aggressiveness=2, energy_ratio=0.5, **kwargs):
+        try:
+            import webrtcvad
+        except ImportError as exc:
+            raise RuntimeError('Cài webrtcvad: pip install webrtcvad-wheels') from exc
+        if sample_rate not in (8000, 16000, 32000, 48000):
+            raise ValueError('webrtcvad cần 8, 16, 32 hoặc 48 kHz')
+        kwargs.setdefault('frame_ms', 30)
+        if kwargs['frame_ms'] not in (10, 20, 30):
+            raise ValueError('webrtcvad cần khung 10, 20 hoặc 30 ms')
+        self._webrtc = webrtcvad.Vad(int(aggressiveness))
+        self.energy_ratio = energy_ratio
+        super().__init__(sample_rate, **kwargs)
+
+    def _is_speech(self, frame, level, threshold):
+        if level <= threshold * self.energy_ratio:
+            return False
+        return self._webrtc.is_speech(frame.astype(np.int16).tobytes(), self.sample_rate)
+
+
+def make_vad(kind='energy', sample_rate=16000, aggressiveness=2, **kwargs):
+    """kind: 'energy' or 'webrtc'."""
+    if kind == 'webrtc':
+        return WebRtcVad(sample_rate, aggressiveness=aggressiveness, **kwargs)
+    if kind != 'energy':
+        raise ValueError(f'vad phải là energy hoặc webrtc, không phải {kind}')
+    return EnergyVad(sample_rate, **kwargs)
 
 
 def normalize_peak(audio, target=0.7, max_gain=8.0):

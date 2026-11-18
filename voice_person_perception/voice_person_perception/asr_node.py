@@ -14,7 +14,8 @@ from voice_person_perception import contract
 from voice_person_perception import vocab
 from voice_person_perception.asr_backends import FallbackBackend, make_backend
 from voice_person_perception.intent_resolver_node import _default_destinations_file
-from voice_person_perception.vad import EnergyVad, normalize_peak, resample_to
+from voice_person_perception.denoise import NoiseProfile, spectral_denoise
+from voice_person_perception.vad import make_vad, normalize_peak, resample_to
 
 TARGET_RATE = 16000
 
@@ -40,6 +41,13 @@ class AsrNode(Node):
         self.declare_parameter('tail_ms', 600)
         # Raise quiet sentences to a normal level before recognition.
         self.declare_parameter('normalize_audio', True)
+        # Noise handling (off by default; compare with eval_voice before turning on):
+        # vad: energy (loudness) or webrtc (WebRTC voice detector + loudness)
+        self.declare_parameter('vad', 'energy')
+        self.declare_parameter('vad_aggressiveness', 2)
+        # denoise: subtract the background-noise spectrum before recognition
+        self.declare_parameter('denoise', False)
+        self.declare_parameter('denoise_strength', 1.5)
         # Debug: save every sentence sent to the recogniser as WAV + a log line.
         self.declare_parameter('save_audio_dir', 'none')
         # Bias recognition towards the command vocabulary (see vocab.py).
@@ -89,11 +97,19 @@ class AsrNode(Node):
                      f'{backend} dùng được ngay')
         end_silence = int(get('ptt_end_silence_ms') if get('push_to_talk')
                           else get('end_silence_ms'))
-        self._vad = EnergyVad(TARGET_RATE, min_rms=float(get('min_rms')),
-                              end_silence_ms=end_silence,
-                              max_utterance_s=float(get('max_utterance_s')),
-                              release_ratio=float(get('release_ratio')),
-                              tail_ms=int(get('tail_ms')))
+        vad_kwargs = dict(min_rms=float(get('min_rms')), end_silence_ms=end_silence,
+                          max_utterance_s=float(get('max_utterance_s')),
+                          release_ratio=float(get('release_ratio')), tail_ms=int(get('tail_ms')))
+        try:
+            self._vad = make_vad(get('vad'), TARGET_RATE,
+                                 aggressiveness=int(get('vad_aggressiveness')), **vad_kwargs)
+        except (RuntimeError, ValueError) as exc:
+            log.error(f'Không dùng được vad={get("vad")}: {exc}. Dùng vad=energy.')
+            self._vad = make_vad('energy', TARGET_RATE, **vad_kwargs)
+        self._denoise = bool(get('denoise'))
+        self._denoise_strength = float(get('denoise_strength'))
+        self._noise = NoiseProfile(TARGET_RATE, seconds=2.0)
+        log.info(f"Tách câu: {get('vad')}, khử ồn: {'bật' if self._denoise else 'tắt'}")
 
         self._audio_q = queue.Queue(maxsize=300)
         self._out_q = queue.Queue()
@@ -229,8 +245,13 @@ class AsrNode(Node):
                 if not self._muted:
                     # Push-to-talk idle: the room is quiet, keep the noise floor fresh.
                     self._vad.observe_noise(chunk)
+                    self._noise.add(chunk)
                 continue
-            for utterance in self._vad.feed(chunk):
+            quiet = not self._vad.in_speech
+            utterances = self._vad.feed(chunk)
+            if quiet and not self._vad.in_speech and not utterances:
+                self._noise.add(chunk)  # background between sentences (always-on mode)
+            for utterance in utterances:
                 if self._ptt:
                     self._armed_at = None  # one sentence per button press
                 self._recognize(utterance)
@@ -238,6 +259,9 @@ class AsrNode(Node):
     def _recognize(self, utterance):
         started = time.monotonic()
         audio_s = len(utterance) / TARGET_RATE
+        if self._denoise and self._noise.seconds() >= 0.25:
+            utterance = spectral_denoise(utterance, self._noise.get(),
+                                         strength=self._denoise_strength)
         if self._normalize:
             utterance = normalize_peak(utterance)
         self._recognizing = True

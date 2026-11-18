@@ -1,6 +1,6 @@
 """Measure speech recognition + command understanding on a real microphone.
 
-Same code path as the robot: EnergyVad cuts the utterance, the ASR backend
+Same code path as the robot: the VAD cuts the utterance, the ASR backend
 transcribes it, intent.parse_utterance resolves it. No ROS needed.
 
 Record once, then compare backends on the SAME audio:
@@ -35,7 +35,8 @@ import yaml
 from voice_person_perception import vocab
 from voice_person_perception.contract import STATION_INTENTS
 from voice_person_perception.intent import load_destinations, parse_utterance
-from voice_person_perception.vad import EnergyVad
+from voice_person_perception.denoise import spectral_denoise
+from voice_person_perception.vad import make_vad
 
 RATE = 16000
 LEAD_IN_S = 1.0  # silence before "NÓI", used by the VAD to measure room noise
@@ -102,15 +103,20 @@ def summarize(rows):
     }
 
 
-def cut_utterance(audio, rate=RATE):
+def cut_utterance(audio, rate=RATE, vad='energy'):
     """Longest VAD utterance in a recording; the whole speech part if VAD finds none."""
-    vad = EnergyVad(rate)
+    v = make_vad(vad, rate)
     pad = np.zeros(rate, dtype=np.int16)  # trailing silence closes the utterance
-    found = vad.feed(np.concatenate([audio, pad]))
+    found = v.feed(np.concatenate([audio, pad]))
     found = [u for u in found if u is not None]
     if found:
         return max(found, key=len)
     return audio[int(LEAD_IN_S * rate):]
+
+
+def lead_in_noise(audio, rate=RATE):
+    """The silence recorded before "NÓI": a sample of the room noise."""
+    return audio[:int(LEAD_IN_S * rate * 0.9)]
 
 
 def save_wav(path, audio, rate=RATE):
@@ -213,6 +219,10 @@ def main(argv=None):
                     help='Vosk chỉ nhận câu mẫu sinh từ destinations.yaml')
     ap.add_argument('--whisper-prompt', action='store_true',
                     help='gợi ý tên điểm đến cho Whisper')
+    ap.add_argument('--vad', choices=['energy', 'webrtc'], default='energy',
+                    help='cách tách câu')
+    ap.add_argument('--denoise', action='store_true',
+                    help='khử ồn nền (mẫu ồn = 1 s im lặng trước mỗi câu)')
     ap.add_argument('--destinations', default='', help='mặc định config/destinations.yaml')
     ap.add_argument('--phrases', default='', help='mặc định config/eval_phrases.yaml')
     ap.add_argument('--reps', type=int, default=3, help='số lần nói mỗi câu')
@@ -238,12 +248,18 @@ def main(argv=None):
     label = args.backend + ('+grammar' if grammar else '') + ('+prompt' if prompt else '')
     if args.fallback not in ('', 'none', args.backend):
         label += f'+fb_{args.fallback}'
+    if args.vad != 'energy':
+        label += f'+{args.vad}'
+    if args.denoise:
+        label += '+denoise'
     if args.backend == 'whisper' or args.fallback == 'whisper':
         label += '_' + os.path.basename(os.path.normpath(args.whisper_model))
 
     rows = []
     for case, rep, path, audio in _attempts(args, cases):
-        utt = cut_utterance(audio)
+        utt = cut_utterance(audio, vad=args.vad)
+        if args.denoise:
+            utt = spectral_denoise(utt, lead_in_noise(audio))
         t0 = time.monotonic()
         try:
             out = backend.transcribe(utt)
